@@ -81,7 +81,7 @@ export default function DashboardPage() {
 
   const filtered = useMemo(() => {
     return leads.filter((l) => {
-      if (filters.month !== 'All 2026' && l.date_opted_in) {
+      if (l.date_opted_in) {
         const t = new Date(l.date_opted_in).getTime();
         if (t < range.from.getTime() || t > range.to.getTime()) return false;
       }
