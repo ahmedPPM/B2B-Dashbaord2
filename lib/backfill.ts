@@ -79,6 +79,60 @@ export function determineCallType(
   return 'other';
 }
 
+/**
+ * Post-pass: pick each lead's longest call near an intro/demo booking as the
+ * canonical intro/demo call. Runs after all calls are imported.
+ * - Intro window: [booking - 30min, min(demo_booking, booking + 48h)]
+ * - Demo window: [booking - 30min, booking + 48h]
+ * - Min call duration: 60s (filters voicemails + short dials)
+ */
+export async function reclassifyCallTypesForLeads(): Promise<{ intro: number; demo: number }> {
+  const supa = supabaseAdmin();
+  const { data: leads } = await supa
+    .from('leads')
+    .select('id, intro_booked_for_date, demo_booked_for_date');
+  let intro = 0;
+  let demo = 0;
+  for (const l of leads || []) {
+    const { data: calls } = await supa
+      .from('call_analyses')
+      .select('id, call_date, call_duration_seconds')
+      .eq('lead_id', l.id)
+      .gte('call_duration_seconds', 60);
+    if (!calls?.length) continue;
+
+    const introT = l.intro_booked_for_date ? new Date(l.intro_booked_for_date).getTime() : null;
+    const demoT = l.demo_booked_for_date ? new Date(l.demo_booked_for_date).getTime() : null;
+
+    if (introT) {
+      const end = Math.min(demoT || Infinity, introT + 48 * 3600_000);
+      const picks = calls
+        .filter((c) => {
+          const t = c.call_date ? new Date(c.call_date).getTime() : 0;
+          return t >= introT - 30 * 60_000 && t <= end;
+        })
+        .sort((a, b) => (b.call_duration_seconds || 0) - (a.call_duration_seconds || 0));
+      if (picks[0]) {
+        await supa.from('call_analyses').update({ call_type: 'intro' }).eq('id', picks[0].id);
+        intro++;
+      }
+    }
+    if (demoT) {
+      const picks = calls
+        .filter((c) => {
+          const t = c.call_date ? new Date(c.call_date).getTime() : 0;
+          return t >= demoT - 30 * 60_000 && t <= demoT + 48 * 3600_000;
+        })
+        .sort((a, b) => (b.call_duration_seconds || 0) - (a.call_duration_seconds || 0));
+      if (picks[0]) {
+        await supa.from('call_analyses').update({ call_type: 'demo' }).eq('id', picks[0].id);
+        demo++;
+      }
+    }
+  }
+  return { intro, demo };
+}
+
 async function upsertOpportunity(contactId: string, leadId: string) {
   try {
     const { opportunities } = await ghl.getOpportunityByContact(contactId);
@@ -346,6 +400,13 @@ export async function runBackfill(): Promise<BackfillResult> {
 
     // Calls (messages + custom field transcripts)
     const totalCalls = await backfillCallData();
+
+    // Reclassify intro/demo based on duration + booking window
+    try {
+      await reclassifyCallTypesForLeads();
+    } catch (e) {
+      console.error('reclassifyCallTypesForLeads', e);
+    }
 
     // Calendly intros
     let calendlyUpdated = 0;
