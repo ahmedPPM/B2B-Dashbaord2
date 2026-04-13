@@ -57,6 +57,7 @@ export interface GHLCall {
   recordingUrl?: string;
   transcript?: string;
   direction?: string;
+  callStatus?: string;
   [k: string]: unknown;
 }
 
@@ -103,14 +104,30 @@ export class GHLClient {
     startAfterDate?: string;
     limit?: number;
     page?: number;
-  } = {}): Promise<{ contacts: GHLContact[]; meta?: { total?: number; nextPageUrl?: string } }> {
-    const q = new URLSearchParams();
-    q.set('locationId', this.locationId);
-    q.set('limit', String(params.limit ?? 100));
-    if (params.page) q.set('page', String(params.page));
-    if (params.startAfterDate) q.set('startAfterDate', params.startAfterDate);
-    if (params.tags?.length) q.set('tags', params.tags.join(','));
-    return this.request(`/contacts/?${q.toString()}`);
+  } = {}): Promise<{ contacts: GHLContact[]; total?: number }> {
+    const filters: Array<{ field: string; operator: string; value: unknown }> = [];
+    if (params.tags?.length) {
+      for (const t of params.tags) {
+        filters.push({ field: 'tags', operator: 'contains', value: t });
+      }
+    }
+    if (params.startAfterDate) {
+      filters.push({
+        field: 'dateAdded',
+        operator: 'range',
+        value: { gte: params.startAfterDate },
+      });
+    }
+    const body = {
+      locationId: this.locationId,
+      page: params.page ?? 1,
+      pageLimit: params.limit ?? 100,
+      filters,
+    };
+    return this.request(`/contacts/search`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   }
 
   async getContact(id: string): Promise<{ contact: GHLContact }> {
@@ -130,17 +147,85 @@ export class GHLClient {
     return this.request(`/contacts/${contactId}/appointments`);
   }
 
-  async getCalls(contactId: string): Promise<{ calls: GHLCall[] }> {
-    // Conversations search for this contact
+  async searchContactByEmail(email: string): Promise<{ contacts: GHLContact[] }> {
+    return this.request(`/contacts/search`, {
+      method: 'POST',
+      body: JSON.stringify({
+        locationId: this.locationId,
+        page: 1,
+        pageLimit: 20,
+        filters: [{ field: 'email', operator: 'eq', value: email }],
+      }),
+    });
+  }
+
+  async getConversations(contactId: string): Promise<{ conversations: Array<{ id: string; contactId?: string; dateUpdated?: number }> }> {
     const q = new URLSearchParams();
     q.set('locationId', this.locationId);
     q.set('contactId', contactId);
     return this.request(`/conversations/search?${q.toString()}`);
   }
 
-  async getCall(callId: string): Promise<{ call: GHLCall }> {
-    return this.request(`/conversations/messages/${callId}`);
+  async getConversationMessages(conversationId: string): Promise<{ messages: { messages: GHLMessage[]; nextPage?: boolean; lastMessageId?: string } }> {
+    return this.request(`/conversations/${conversationId}/messages`, {}, 2);
   }
+
+  /**
+   * Returns all call-type messages across all conversations for a contact.
+   */
+  async getCalls(contactId: string): Promise<{ calls: GHLCall[] }> {
+    const calls: GHLCall[] = [];
+    try {
+      const { conversations } = await this.getConversations(contactId);
+      for (const conv of conversations || []) {
+        try {
+          const res = await this.getConversationMessages(conv.id);
+          const msgs = res?.messages?.messages || [];
+          for (const m of msgs) {
+            if (m.messageType === 'TYPE_CALL' || m.type === 'CALL') {
+              const meta = (m.meta || {}) as { call?: { duration?: number; status?: string; recordingUrl?: string } };
+              calls.push({
+                id: m.id,
+                contactId,
+                dateAdded: m.dateAdded,
+                duration: meta.call?.duration ?? undefined,
+                recordingUrl: meta.call?.recordingUrl ?? undefined,
+                direction: m.direction,
+                callStatus: meta.call?.status,
+              });
+            }
+          }
+        } catch (e) {
+          console.error('getConversationMessages failed', conv.id, e);
+        }
+      }
+    } catch (e) {
+      console.error('getConversations failed', contactId, e);
+    }
+    return { calls };
+  }
+
+  async getCalendarEvents(calendarId: string, startMs: number, endMs: number): Promise<{ events: GHLAppointment[] }> {
+    const q = new URLSearchParams();
+    q.set('locationId', this.locationId);
+    q.set('calendarId', calendarId);
+    q.set('startTime', String(startMs));
+    q.set('endTime', String(endMs));
+    return this.request(`/calendars/events?${q.toString()}`);
+  }
+}
+
+export interface GHLMessage {
+  id: string;
+  type?: number | string;
+  messageType?: string;
+  direction?: string;
+  dateAdded?: string;
+  contactId?: string;
+  conversationId?: string;
+  body?: string;
+  meta?: unknown;
+  [k: string]: unknown;
 }
 
 export const ghl = new GHLClient();

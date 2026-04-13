@@ -23,19 +23,18 @@ export default function BackfillAdminPage() {
         const supa = supabaseBrowser();
         const { data: user } = await supa.auth.getUser();
         setEmail(user.user?.email || '');
-        const [{ count: totalLeads }, { count: calls }, { count: pending }, { data: lastRun }] = await Promise.all([
-          supa.from('leads').select('*', { count: 'exact', head: true }),
-          supa.from('call_analyses').select('*', { count: 'exact', head: true }),
-          supa.from('call_analyses').select('*', { count: 'exact', head: true }).is('analyzed_at', null),
-          supa.from('backfill_runs').select('total_skipped').order('started_at', { ascending: false }).limit(1).maybeSingle(),
-        ]);
-        setStats({
-          totalLeads: totalLeads || 0,
-          skipped: lastRun?.total_skipped || 0,
-          calls: calls || 0,
-          pending: pending || 0,
-        });
-      } catch {
+        const res = await fetch('/api/stats/counts');
+        const json = await res.json();
+        if (json?.ok) {
+          setStats({
+            totalLeads: json.totalLeads || 0,
+            skipped: json.skipped || 0,
+            calls: json.calls || 0,
+            pending: json.pending || 0,
+          });
+        }
+      } catch (e) {
+        console.error('backfill admin stats', e);
         setStats({ totalLeads: 0, skipped: 0, calls: 0, pending: 0 });
       }
     })();

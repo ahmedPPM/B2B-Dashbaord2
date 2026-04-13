@@ -4,14 +4,13 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import type { Lead, CallAnalysis, HyrosAttribution } from '@/lib/types';
-import { supabaseBrowser } from '@/lib/supabase/browser';
 import { generateMockLeads } from '@/lib/mock-data';
 import { CallAnalysisCard } from '@/components/call-analysis-card';
 import { HyrosCard } from '@/components/hyros-card';
 import { ScoreBadge } from '@/components/score-badge';
 import { StagePill } from '@/components/stage-pill';
 import { formatDate, formatCurrency } from '@/lib/utils';
-import { ArrowLeft, Phone, Mail, Play, Loader2 } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, Play, Loader2, CalendarClock } from 'lucide-react';
 
 export default function LeadDetailPage() {
   const params = useParams<{ id: string }>();
@@ -25,28 +24,29 @@ export default function LeadDetailPage() {
   useEffect(() => {
     (async () => {
       try {
-        const supa = supabaseBrowser();
-        const [{ data: leadRow }, { data: callRows }] = await Promise.all([
-          supa.from('leads').select('*').eq('id', id).maybeSingle(),
-          supa.from('call_analyses').select('*').eq('lead_id', id).order('call_date', { ascending: false }),
-        ]);
-        if (leadRow) {
-          setLead(leadRow as Lead);
-          setCalls((callRows || []) as CallAnalysis[]);
-          const email = (leadRow as Lead).email;
+        const res = await fetch(`/api/leads/${id}`);
+        const json = await res.json();
+        if (json?.ok && json.lead) {
+          setLead(json.lead as Lead);
+          setCalls((json.calls || []) as CallAnalysis[]);
+          const email = (json.lead as Lead).email;
           if (email) {
-            const { data: hyrosRow } = await supa
-              .from('hyros_attribution')
-              .select('*')
-              .eq('email', email.trim().toLowerCase())
-              .maybeSingle();
-            if (hyrosRow) setHyros(hyrosRow as HyrosAttribution);
+            try {
+              const hres = await fetch(`/api/leads/${id}/hyros`);
+              if (hres.ok) {
+                const hjson = await hres.json();
+                if (hjson?.hyros) setHyros(hjson.hyros as HyrosAttribution);
+              }
+            } catch (e) {
+              console.error('hyros fetch', e);
+            }
           }
         } else {
           const mock = generateMockLeads(40).find((l) => l.id === id) || generateMockLeads(1)[0];
           setLead(mock);
         }
-      } catch {
+      } catch (e) {
+        console.error('lead detail fetch', e);
         const mock = generateMockLeads(1)[0];
         setLead(mock);
       }
@@ -69,6 +69,7 @@ export default function LeadDetailPage() {
 
   if (!lead) return <div className="text-zinc-500">Loading…</div>;
 
+  const introCalIds = (process.env.NEXT_PUBLIC_GHL_INTRO_CALENDAR_IDS || '0cPxjhApUzQ83lW2bQmt,vgek7QKnwcUvQcNIbepL').split(',');
   return (
     <div className="space-y-4 max-w-5xl">
       <Link href="/dashboard" className="text-sm text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1">
@@ -113,6 +114,28 @@ export default function LeadDetailPage() {
         </dl>
       </div>
 
+      {/* Appointments card */}
+      <div className="card p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <CalendarClock className="w-4 h-4 text-emerald-400" />
+          <h3 className="font-medium">Appointments</h3>
+        </div>
+        <div className="grid md:grid-cols-2 gap-4 text-sm">
+          <ApptBlock
+            title="Intro Call"
+            source={lead.intro_booked ? (introCalIds.length > 1 ? 'GHL / Calendly' : 'GHL') : '—'}
+            date={lead.intro_booked_for_date}
+            status={lead.intro_show_status}
+          />
+          <ApptBlock
+            title="Demo Call"
+            source={lead.demo_booked ? 'GHL' : '—'}
+            date={lead.demo_booked_for_date}
+            status={lead.demo_show_status}
+          />
+        </div>
+      </div>
+
       <HyrosCard data={hyros} />
 
       <div className="flex items-center justify-between">
@@ -145,6 +168,16 @@ function Field({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-xs uppercase tracking-wider text-zinc-500">{label}</dt>
       <dd className="text-zinc-200 mt-0.5">{value}</dd>
+    </div>
+  );
+}
+
+function ApptBlock({ title, source, date, status }: { title: string; source: string; date: string | null; status: string | null }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 p-3">
+      <div className="text-xs uppercase tracking-wider text-zinc-500 mb-1">{title}</div>
+      <div className="text-zinc-200">{date ? formatDate(date) : '—'}</div>
+      <div className="text-xs text-zinc-500 mt-1">Source: {source} {status ? `• ${status}` : ''}</div>
     </div>
   );
 }

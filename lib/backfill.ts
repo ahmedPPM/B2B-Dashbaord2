@@ -1,13 +1,32 @@
 import { supabaseAdmin } from './supabase/server';
 import { ghl, type GHLContact, type GHLAppointment, type GHLCall } from './ghl';
 import { calculateLeadScore } from './scoring';
+import { backfillCalendly } from './calendly';
 
 const BACKFILL_TAGS = ['b2b typeform optin', 'new_lead'];
+
+function introCalendarIds(): string[] {
+  return (process.env.GHL_INTRO_CALENDAR_IDS || '0cPxjhApUzQ83lW2bQmt,vgek7QKnwcUvQcNIbepL')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function demoCalendarIds(): string[] {
+  return (process.env.GHL_DEMO_CALENDAR_IDS || 'R28qx4Lw05GV8GJEiCUe')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+const INTRO_TRANSCRIPT_FIELD_KEYS = ['intro_call_transcripts', 'intro_call_transcript'];
 
 export interface BackfillResult {
   totalImported: number;
   totalSkipped: number;
   totalCalls: number;
+  totalAppointments: number;
+  calendlyUpdated: number;
 }
 
 export function mapContactToLead(c: GHLContact): Record<string, unknown> {
@@ -18,7 +37,7 @@ export function mapContactToLead(c: GHLContact): Record<string, unknown> {
     date_opted_in: c.dateAdded || null,
     lead_name: name,
     phone: c.phone || null,
-    email: c.email || null,
+    email: c.email ? c.email.toLowerCase() : null,
     app_grading: calculateLeadScore(c),
     campaign_id: attr.campaignId || null,
     ad_set_id: attr.adSetId || null,
@@ -33,14 +52,25 @@ export function mapContactToLead(c: GHLContact): Record<string, unknown> {
   };
 }
 
+export function classifyAppointment(
+  evt: GHLAppointment
+): 'intro' | 'demo' | null {
+  const cid = evt.calendarId || '';
+  if (introCalendarIds().includes(cid)) return 'intro';
+  if (demoCalendarIds().includes(cid)) return 'demo';
+  const title = evt.title || '';
+  if (/demo/i.test(title)) return 'demo';
+  if (/intro/i.test(title)) return 'intro';
+  return null;
+}
+
 export function determineCallType(
   call: GHLCall,
   lead: { intro_booked_for_date: string | null; demo_booked_for_date: string | null }
 ): 'intro' | 'demo' | 'other' {
   const callDate = call.dateAdded ? new Date(call.dateAdded).getTime() : 0;
   if (!callDate) return 'other';
-  const diffTo = (d: string | null) =>
-    d ? Math.abs(callDate - new Date(d).getTime()) : Infinity;
+  const diffTo = (d: string | null) => (d ? Math.abs(callDate - new Date(d).getTime()) : Infinity);
   const introDiff = diffTo(lead.intro_booked_for_date);
   const demoDiff = diffTo(lead.demo_booked_for_date);
   const HOUR = 3600_000;
@@ -67,46 +97,136 @@ async function upsertOpportunity(contactId: string, leadId: string) {
   }
 }
 
-async function upsertAppointments(contactId: string, leadId: string) {
+async function fetchAllAppointmentsForContact(contactId: string): Promise<GHLAppointment[]> {
+  const out: GHLAppointment[] = [];
   try {
     const { events } = await ghl.getAppointments(contactId);
-    if (!events?.length) return;
-    const intro = events.find((e) => /intro/i.test(e.title || ''));
-    const demo = events.find((e) => /demo/i.test(e.title || ''));
+    for (const e of events || []) out.push(e);
+  } catch (e) {
+    console.error('getAppointments', contactId, e);
+  }
+  return out;
+}
+
+async function fetchCalendarWindow(): Promise<GHLAppointment[]> {
+  // Pull all events across configured calendars once, across backfill window.
+  const startStr = process.env.BACKFILL_START_DATE || '2026-01-01';
+  const startMs = new Date(`${startStr}T00:00:00Z`).getTime();
+  const endMs = Date.now() + 365 * 24 * 3600_000; // include future bookings
+  const calIds = [...introCalendarIds(), ...demoCalendarIds()];
+  const all: GHLAppointment[] = [];
+  for (const id of calIds) {
+    try {
+      const { events } = await ghl.getCalendarEvents(id, startMs, endMs);
+      for (const e of events || []) all.push(e);
+    } catch (e) {
+      console.error('getCalendarEvents', id, e);
+    }
+  }
+  return all;
+}
+
+export async function upsertAppointmentsForLead(
+  contactId: string,
+  leadId: string,
+  events: GHLAppointment[]
+): Promise<number> {
+  try {
+    if (!events.length) return 0;
     const patch: Record<string, unknown> = {};
+    // Pick latest intro + latest demo
+    const intros = events.filter((e) => classifyAppointment(e) === 'intro');
+    const demos = events.filter((e) => classifyAppointment(e) === 'demo');
+    const byStartDesc = (a: GHLAppointment, b: GHLAppointment) =>
+      new Date(b.startTime || 0).getTime() - new Date(a.startTime || 0).getTime();
+    intros.sort(byStartDesc);
+    demos.sort(byStartDesc);
+    const intro = intros[0];
+    const demo = demos[0];
     if (intro) {
       patch.intro_booked = true;
-      patch.intro_created_date = intro.startTime || null;
+      patch.intro_created_date = (intro.dateAdded as string) || intro.startTime || null;
       patch.intro_booked_for_date = intro.startTime || null;
       patch.intro_show_status = intro.appointmentStatus || null;
     }
     if (demo) {
       patch.demo_booked = true;
-      patch.demo_created_date = demo.startTime || null;
+      patch.demo_created_date = (demo.dateAdded as string) || demo.startTime || null;
       patch.demo_booked_for_date = demo.startTime || null;
       patch.demo_show_status = demo.appointmentStatus || null;
     }
     if (Object.keys(patch).length) {
       await supabaseAdmin().from('leads').update(patch).eq('id', leadId);
+      return (intro ? 1 : 0) + (demo ? 1 : 0);
     }
+    return 0;
   } catch (e) {
-    console.error('upsertAppointments', contactId, e);
+    console.error('upsertAppointmentsForLead', contactId, e);
+    return 0;
+  }
+}
+
+async function persistIntroTranscriptFromCustomField(
+  contactId: string,
+  leadId: string
+): Promise<boolean> {
+  try {
+    const { contact } = await ghl.getContact(contactId);
+    const fields = (contact.customFields || []) as Array<{ id?: string; key?: string; value?: unknown }>;
+    const hit = fields.find((f) => {
+      const k = (f.key || '').toLowerCase();
+      return INTRO_TRANSCRIPT_FIELD_KEYS.includes(k);
+    });
+    const transcript = hit?.value ? String(hit.value).trim() : '';
+    if (!transcript) return false;
+
+    const supa = supabaseAdmin();
+    const callId = `cf-${contactId}`;
+    const { data: existing } = await supa
+      .from('call_analyses')
+      .select('id, raw_transcript')
+      .eq('ghl_call_id', callId)
+      .maybeSingle();
+    if (existing) {
+      if (existing.raw_transcript !== transcript) {
+        await supa.from('call_analyses').update({ raw_transcript: transcript }).eq('id', existing.id);
+      }
+      return true;
+    }
+    await supa.from('call_analyses').insert({
+      lead_id: leadId,
+      ghl_contact_id: contactId,
+      ghl_call_id: callId,
+      call_type: 'intro',
+      call_date: null,
+      raw_transcript: transcript,
+    });
+    return true;
+  } catch (e) {
+    console.error('persistIntroTranscriptFromCustomField', contactId, e);
+    return false;
   }
 }
 
 export async function backfillCallData(): Promise<number> {
   const supa = supabaseAdmin();
   let totalCalls = 0;
-  const { data: leads } = await supa.from('leads').select('id, ghl_contact_id, intro_booked_for_date, demo_booked_for_date');
+  const { data: leads } = await supa
+    .from('leads')
+    .select('id, ghl_contact_id, intro_booked_for_date, demo_booked_for_date');
   if (!leads) return 0;
 
   for (const lead of leads) {
     try {
+      // Custom-field transcript (cheap, one contact fetch)
+      const cfInserted = await persistIntroTranscriptFromCustomField(lead.ghl_contact_id, lead.id);
+      if (cfInserted) totalCalls++;
+
+      // Messages-based call extraction
       const { calls } = await ghl.getCalls(lead.ghl_contact_id);
       for (const call of calls || []) {
         const callId = call.id;
         if (!callId) continue;
-        // Idempotent insert: skip if already present
         const { data: existing } = await supa
           .from('call_analyses')
           .select('id')
@@ -135,6 +255,22 @@ export async function backfillCallData(): Promise<number> {
   return totalCalls;
 }
 
+async function importContactIfNew(c: GHLContact): Promise<'imported' | 'skipped'> {
+  const supa = supabaseAdmin();
+  const { data: existing } = await supa
+    .from('leads')
+    .select('id')
+    .eq('ghl_contact_id', c.id)
+    .maybeSingle();
+  if (existing) return 'skipped';
+  const row = mapContactToLead(c);
+  const { data: inserted } = await supa.from('leads').insert(row).select('id').single();
+  if (inserted) {
+    await upsertOpportunity(c.id, inserted.id);
+  }
+  return 'imported';
+}
+
 export async function runBackfill(): Promise<BackfillResult> {
   const supa = supabaseAdmin();
   const startDate = process.env.BACKFILL_START_DATE || '2026-01-01';
@@ -150,6 +286,7 @@ export async function runBackfill(): Promise<BackfillResult> {
   let totalSkipped = 0;
 
   try {
+    // Pass 1: tagged contacts (primary path)
     for (const tag of BACKFILL_TAGS) {
       let page = 1;
       while (true) {
@@ -160,39 +297,47 @@ export async function runBackfill(): Promise<BackfillResult> {
           page,
         });
         if (!contacts?.length) break;
-
         for (const c of contacts) {
-          const { data: existing } = await supa
-            .from('leads')
-            .select('id')
-            .eq('ghl_contact_id', c.id)
-            .maybeSingle();
-
-          if (existing) {
-            totalSkipped++;
-            continue;
-          }
-
-          const row = mapContactToLead(c);
-          const { data: inserted } = await supa
-            .from('leads')
-            .insert(row)
-            .select('id')
-            .single();
-          if (inserted) {
-            totalImported++;
-            await upsertOpportunity(c.id, inserted.id);
-            await upsertAppointments(c.id, inserted.id);
-          }
-          await ghl.sleep(80);
+          const res = await importContactIfNew(c);
+          if (res === 'imported') totalImported++;
+          else totalSkipped++;
+          await ghl.sleep(60);
         }
-
         if (contacts.length < 100) break;
         page++;
       }
     }
 
+    // Appointments: pull from all configured calendars (one shot) then distribute.
+    let totalAppointments = 0;
+    const allEvents = await fetchCalendarWindow();
+    const eventsByContact = new Map<string, GHLAppointment[]>();
+    for (const e of allEvents) {
+      const cid = e.contactId || '';
+      if (!cid) continue;
+      const arr = eventsByContact.get(cid) || [];
+      arr.push(e);
+      eventsByContact.set(cid, arr);
+    }
+    const { data: allLeads } = await supa.from('leads').select('id, ghl_contact_id');
+    for (const lead of allLeads || []) {
+      const evts = eventsByContact.get(lead.ghl_contact_id) || [];
+      // Fallback to contact-scoped appointments if calendar pull empty for this lead
+      const withFallback = evts.length ? evts : await fetchAllAppointmentsForContact(lead.ghl_contact_id);
+      totalAppointments += await upsertAppointmentsForLead(lead.ghl_contact_id, lead.id, withFallback);
+      await ghl.sleep(30);
+    }
+
+    // Calls (messages + custom field transcripts)
     const totalCalls = await backfillCallData();
+
+    // Calendly intros
+    let calendlyUpdated = 0;
+    try {
+      calendlyUpdated = await backfillCalendly();
+    } catch (e) {
+      console.error('backfillCalendly', e);
+    }
 
     if (runId) {
       await supa
@@ -206,8 +351,9 @@ export async function runBackfill(): Promise<BackfillResult> {
         .eq('id', runId);
     }
 
-    return { totalImported, totalSkipped, totalCalls };
+    return { totalImported, totalSkipped, totalCalls, totalAppointments, calendlyUpdated };
   } catch (e) {
+    console.error('runBackfill', e);
     if (runId) {
       await supa
         .from('backfill_runs')

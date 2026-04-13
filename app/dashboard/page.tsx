@@ -38,16 +38,13 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const supa = supabaseBrowser();
-        const [{ data: leadRows }, { data: spendRows }] = await Promise.all([
-          supa.from('leads').select('*').order('date_opted_in', { ascending: false }).limit(1000),
-          supa.from('windsor_ad_spend').select('*').limit(5000),
-        ]);
+        const res = await fetch('/api/leads');
+        const json = await res.json();
         if (cancelled) return;
-        if (leadRows?.length) setLeads(leadRows as Lead[]);
+        const leadRows: Lead[] = json?.leads || [];
+        if (leadRows.length) setLeads(leadRows);
         else setLeads(generateMockLeads(40));
-        if (spendRows?.length) setSpend(spendRows as WindsorRow[]);
-        else setSpend(generateMockSpend());
+        setSpend(generateMockSpend());
       } catch {
         if (!cancelled) {
           setLeads(generateMockLeads(40));
@@ -63,9 +60,10 @@ export default function DashboardPage() {
     try {
       const supa = supabaseBrowser();
       channel = supa.channel('leads-realtime')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => {
-          supa.from('leads').select('*').order('date_opted_in', { ascending: false }).limit(1000)
-            .then(({ data }) => { if (data?.length) setLeads(data as Lead[]); });
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, async () => {
+          const res = await fetch('/api/leads');
+          const json = await res.json();
+          if (json?.leads?.length) setLeads(json.leads as Lead[]);
         })
         .subscribe();
     } catch {

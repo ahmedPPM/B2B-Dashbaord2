@@ -25,7 +25,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'bad json' }, { status: 400 });
   }
 
-  if (data.event !== 'invitee.created') return NextResponse.json({ ok: true });
+  const evt = data.event;
+  if (evt !== 'invitee.created' && evt !== 'invitee.canceled' && evt !== 'invitee.cancelled') {
+    return NextResponse.json({ ok: true });
+  }
 
   const email = data.payload?.email;
   const startTime = data.payload?.event?.start_time;
@@ -33,18 +36,31 @@ export async function POST(req: Request) {
   if (!email || !startTime) return NextResponse.json({ ok: true });
 
   const supa = supabaseAdmin();
-  const { data: lead } = await supa.from('leads').select('id').eq('email', email.toLowerCase()).maybeSingle();
+  const { data: lead } = await supa
+    .from('leads')
+    .select('id')
+    .eq('email', email.toLowerCase())
+    .maybeSingle();
   if (!lead) return NextResponse.json({ ok: true });
 
   const isDemo = /demo/i.test(eventName);
-  await supa
-    .from('leads')
-    .update(
-      isDemo
-        ? { demo_booked: true, demo_booked_for_date: startTime, demo_created_date: new Date().toISOString() }
-        : { intro_booked: true, intro_booked_for_date: startTime, intro_created_date: new Date().toISOString() }
-    )
-    .eq('id', lead.id);
+  const canceled = evt === 'invitee.canceled' || evt === 'invitee.cancelled';
+  const status = canceled ? 'Cancelled' : 'Scheduled';
+  const patch = isDemo
+    ? {
+        demo_booked: !canceled,
+        demo_booked_for_date: startTime,
+        demo_created_date: new Date().toISOString(),
+        demo_show_status: status,
+      }
+    : {
+        intro_booked: !canceled,
+        intro_booked_for_date: startTime,
+        intro_created_date: new Date().toISOString(),
+        intro_show_status: status,
+      };
+  const { error } = await supa.from('leads').update(patch).eq('id', lead.id);
+  if (error) console.error('calendly webhook update', error);
 
   return NextResponse.json({ ok: true });
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabaseBrowser } from '@/lib/supabase/browser';
 import type { Lead } from '@/lib/types';
 import { generateMockLeads } from '@/lib/mock-data';
 import { LeadTable } from '@/components/lead-table';
@@ -12,10 +11,12 @@ export default function LeadsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const supa = supabaseBrowser();
-        const { data } = await supa.from('leads').select('*').order('date_opted_in', { ascending: false }).limit(1000);
-        setLeads(data?.length ? (data as Lead[]) : generateMockLeads(40));
-      } catch {
+        const res = await fetch('/api/leads');
+        const json = await res.json();
+        const rows = (json?.leads || []) as Lead[];
+        setLeads(rows.length ? rows : generateMockLeads(40));
+      } catch (e) {
+        console.error('leads list fetch', e);
         setLeads(generateMockLeads(40));
       }
     })();

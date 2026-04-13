@@ -7,13 +7,28 @@ import type { GHLContact } from '@/lib/ghl';
 function verifySignature(body: string, signature: string | null): boolean {
   const secret = process.env.GHL_WEBHOOK_SECRET;
   if (!secret) return true; // allow in dev
-  if (!signature) return false;
-  const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
-  try {
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-  } catch {
+  if (!signature) {
+    console.warn('GHL webhook: no signature header');
     return false;
   }
+  const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
+  try {
+    const ok = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+    if (!ok) console.warn('GHL webhook: bad signature', signature.slice(0, 16));
+    return ok;
+  } catch (e) {
+    console.error('GHL signature compare error', e);
+    return false;
+  }
+}
+
+function introCalendarIds(): string[] {
+  return (process.env.GHL_INTRO_CALENDAR_IDS || '0cPxjhApUzQ83lW2bQmt,vgek7QKnwcUvQcNIbepL')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+}
+function demoCalendarIds(): string[] {
+  return (process.env.GHL_DEMO_CALENDAR_IDS || 'R28qx4Lw05GV8GJEiCUe')
+    .split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 export async function POST(req: Request) {
@@ -76,15 +91,39 @@ async function handleEvent(payload: Record<string, unknown>) {
     return;
   }
 
-  if (type === 'AppointmentCreate') {
-    const p = payload as { contactId?: string; startTime?: string; title?: string; status?: string };
+  if (type === 'AppointmentCreate' || type === 'AppointmentUpdate') {
+    const p = payload as {
+      contactId?: string;
+      startTime?: string;
+      title?: string;
+      status?: string;
+      appointmentStatus?: string;
+      calendarId?: string;
+    };
     if (!p.contactId) return;
     const { data: lead } = await supa.from('leads').select('id').eq('ghl_contact_id', p.contactId).maybeSingle();
     if (!lead) return;
-    const isDemo = /demo/i.test(p.title || '');
-    const patch = isDemo
-      ? { demo_booked: true, demo_booked_for_date: p.startTime || null, demo_created_date: new Date().toISOString(), demo_show_status: p.status || null }
-      : { intro_booked: true, intro_booked_for_date: p.startTime || null, intro_created_date: new Date().toISOString(), intro_show_status: p.status || null };
+    const cid = p.calendarId || '';
+    let kind: 'intro' | 'demo' | null = null;
+    if (introCalendarIds().includes(cid)) kind = 'intro';
+    else if (demoCalendarIds().includes(cid)) kind = 'demo';
+    else if (/demo/i.test(p.title || '')) kind = 'demo';
+    else kind = 'intro';
+    const showStatus = p.appointmentStatus || p.status || null;
+    const patch =
+      kind === 'demo'
+        ? {
+            demo_booked: true,
+            demo_booked_for_date: p.startTime || null,
+            demo_created_date: new Date().toISOString(),
+            demo_show_status: showStatus,
+          }
+        : {
+            intro_booked: true,
+            intro_booked_for_date: p.startTime || null,
+            intro_created_date: new Date().toISOString(),
+            intro_show_status: showStatus,
+          };
     await supa.from('leads').update(patch).eq('id', lead.id);
     return;
   }

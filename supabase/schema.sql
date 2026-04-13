@@ -131,7 +131,9 @@ create table if not exists public.backfill_runs (
 -- =======================================================
 -- Realtime
 -- =======================================================
-alter publication supabase_realtime add table public.leads;
+do $$ begin
+  alter publication supabase_realtime add table public.leads;
+exception when duplicate_object then null; end $$;
 
 -- =======================================================
 -- RLS
