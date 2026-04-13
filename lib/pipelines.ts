@@ -58,6 +58,7 @@ export async function annotateLeads<T extends { pipeline_stage?: string | null }
 export async function backfillPipelineStages() {
   const { ghl } = await import('./ghl');
   const supa = supabaseAdmin();
+  const map = await getStageMap();
   const { data: leads } = await supa.from('leads').select('id, ghl_contact_id');
   let updated = 0;
   for (const l of leads || []) {
@@ -65,11 +66,14 @@ export async function backfillPipelineStages() {
       const { opportunities } = await ghl.getOpportunityByContact(l.ghl_contact_id);
       const open = (opportunities || [])[0];
       if (!open?.pipelineStageId) continue;
+      const stageName = map.get(open.pipelineStageId)?.stageName || '';
+      const isWon = /won|client/i.test(stageName);
       await supa
         .from('leads')
         .update({
           pipeline_stage: open.pipelineStageId,
           cash_collected: open.monetaryValue || 0,
+          client_closed: isWon,
         })
         .eq('id', l.id);
       updated++;

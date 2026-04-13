@@ -205,6 +205,27 @@ export class GHLClient {
     return { calls };
   }
 
+  /**
+   * Fetch the timestamped transcription for a call message. Returns the joined
+   * transcript text, or null if GHL has no transcript for it.
+   */
+  async getCallTranscription(messageId: string): Promise<string | null> {
+    try {
+      const res = await fetch(
+        `${BASE}/conversations/locations/${this.locationId}/messages/${messageId}/transcription`,
+        { headers: this.headers() }
+      );
+      if (res.status === 404) return null;
+      if (!res.ok) return null;
+      const segs = (await res.json()) as Array<{ transcript?: string }>;
+      const text = segs.map((s) => s?.transcript || '').join(' ').replace(/\s+/g, ' ').trim();
+      return text || null;
+    } catch (e) {
+      console.error('getCallTranscription', messageId, e);
+      return null;
+    }
+  }
+
   async getCalendarEvents(calendarId: string, startMs: number, endMs: number): Promise<{ events: GHLAppointment[] }> {
     const q = new URLSearchParams();
     q.set('locationId', this.locationId);

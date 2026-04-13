@@ -229,10 +229,26 @@ export async function backfillCallData(): Promise<number> {
         if (!callId) continue;
         const { data: existing } = await supa
           .from('call_analyses')
-          .select('id')
+          .select('id, raw_transcript')
           .eq('ghl_call_id', callId)
           .maybeSingle();
-        if (existing) continue;
+
+        // Fetch transcript (if any) from GHL's transcription endpoint.
+        let transcript: string | null = call.transcript || null;
+        if (!transcript) {
+          transcript = await ghl.getCallTranscription(callId);
+        }
+
+        if (existing) {
+          if (transcript && existing.raw_transcript !== transcript) {
+            await supa
+              .from('call_analyses')
+              .update({ raw_transcript: transcript, analyzed_at: null })
+              .eq('id', existing.id);
+            totalCalls++;
+          }
+          continue;
+        }
 
         const callType = determineCallType(call, lead);
         await supa.from('call_analyses').insert({
@@ -243,7 +259,7 @@ export async function backfillCallData(): Promise<number> {
           call_date: call.dateAdded || null,
           call_duration_seconds: call.duration || null,
           call_recording_url: call.recordingUrl || null,
-          raw_transcript: call.transcript || null,
+          raw_transcript: transcript,
         });
         totalCalls++;
       }
