@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import type { Lead, CallAnalysis } from '@/lib/types';
+import type { Lead, CallAnalysis, HyrosAttribution } from '@/lib/types';
 import { supabaseBrowser } from '@/lib/supabase/browser';
 import { generateMockLeads } from '@/lib/mock-data';
 import { CallAnalysisCard } from '@/components/call-analysis-card';
+import { HyrosCard } from '@/components/hyros-card';
 import { ScoreBadge } from '@/components/score-badge';
 import { StagePill } from '@/components/stage-pill';
 import { formatDate, formatCurrency } from '@/lib/utils';
@@ -17,6 +18,7 @@ export default function LeadDetailPage() {
   const id = params.id;
   const [lead, setLead] = useState<Lead | null>(null);
   const [calls, setCalls] = useState<CallAnalysis[]>([]);
+  const [hyros, setHyros] = useState<HyrosAttribution | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -31,6 +33,15 @@ export default function LeadDetailPage() {
         if (leadRow) {
           setLead(leadRow as Lead);
           setCalls((callRows || []) as CallAnalysis[]);
+          const email = (leadRow as Lead).email;
+          if (email) {
+            const { data: hyrosRow } = await supa
+              .from('hyros_attribution')
+              .select('*')
+              .eq('email', email.trim().toLowerCase())
+              .maybeSingle();
+            if (hyrosRow) setHyros(hyrosRow as HyrosAttribution);
+          }
         } else {
           const mock = generateMockLeads(40).find((l) => l.id === id) || generateMockLeads(1)[0];
           setLead(mock);
@@ -101,6 +112,8 @@ export default function LeadDetailPage() {
           <Field label="Why Not Close" value={lead.why_didnt_close || '—'} />
         </dl>
       </div>
+
+      <HyrosCard data={hyros} />
 
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Call Analyses</h3>

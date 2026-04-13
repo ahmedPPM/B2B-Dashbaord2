@@ -161,3 +161,25 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   create policy "authed read backfill_runs" on public.backfill_runs for select to authenticated using (true);
 exception when duplicate_object then null; end $$;
+
+-- =======================================================
+-- hyros_attribution
+-- =======================================================
+CREATE TABLE IF NOT EXISTS hyros_attribution (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  revenue_attributed NUMERIC DEFAULT 0,
+  first_order_date TIMESTAMPTZ,
+  last_order_date TIMESTAMPTZ,
+  tags TEXT[],
+  raw_payload JSONB,
+  synced_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(email)
+);
+CREATE INDEX IF NOT EXISTS idx_hyros_email ON hyros_attribution(email);
+CREATE INDEX IF NOT EXISTS idx_hyros_lead_id ON hyros_attribution(lead_id);
+ALTER TABLE hyros_attribution ENABLE ROW LEVEL SECURITY;
+do $$ begin
+  CREATE POLICY "authed read hyros" ON hyros_attribution FOR SELECT TO authenticated USING (true);
+exception when duplicate_object then null; end $$;

@@ -121,6 +121,18 @@ export interface KPIStats {
   setterConversionRate: number;
 }
 
+export interface HyrosAttribution {
+  id?: string;
+  lead_id?: string | null;
+  email: string;
+  revenue_attributed: number;
+  first_order_date?: string | null;
+  last_order_date?: string | null;
+  tags: string[];
+  raw_payload?: unknown;
+  synced_at?: string;
+}
+
 export interface CallAnalysisResult {
   summary: string;
   lead_insights: string;
