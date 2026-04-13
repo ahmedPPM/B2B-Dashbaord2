@@ -59,19 +59,42 @@ async function handleEvent(payload: Record<string, unknown>) {
     if (!contact?.id) return;
     const score = calculateLeadScore(contact);
     const name = contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(' ') || null;
-    await supa.from('leads').upsert(
-      {
-        ghl_contact_id: contact.id,
-        lead_name: name,
-        email: contact.email || null,
-        phone: contact.phone || null,
-        app_grading: score,
-        date_opted_in: contact.dateAdded || null,
-        lead_tag: contact.tags?.[0] || null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'ghl_contact_id' }
-    );
+    // Only include fields actually present in the payload — avoids clobbering
+    // existing values with null on partial updates.
+    const row: Record<string, unknown> = {
+      ghl_contact_id: contact.id,
+      updated_at: new Date().toISOString(),
+    };
+    if (name) row.lead_name = name;
+    if (contact.email) row.email = contact.email.toLowerCase();
+    if (contact.phone) row.phone = contact.phone;
+    if (typeof score === 'number') row.app_grading = score;
+    if (contact.dateAdded) row.date_opted_in = contact.dateAdded;
+    if (contact.tags?.length) row.lead_tag = contact.tags[0];
+    await supa.from('leads').upsert(row, { onConflict: 'ghl_contact_id' });
+
+    // If intro_call_transcripts custom field is in payload, queue for Claude analysis.
+    const fields = (contact.customFields || []) as Array<{ key?: string; value?: unknown }>;
+    const tx = fields.find((f) => (f.key || '').toLowerCase().includes('intro_call_transcript'));
+    if (tx?.value) {
+      const { data: lead } = await supa.from('leads').select('id').eq('ghl_contact_id', contact.id).maybeSingle();
+      if (lead) {
+        const callId = `cf-${contact.id}`;
+        const { data: existing } = await supa.from('call_analyses').select('id, raw_transcript').eq('ghl_call_id', callId).maybeSingle();
+        const transcript = String(tx.value).trim();
+        if (!existing) {
+          await supa.from('call_analyses').insert({
+            lead_id: lead.id,
+            ghl_contact_id: contact.id,
+            ghl_call_id: callId,
+            call_type: 'intro',
+            raw_transcript: transcript,
+          });
+        } else if (existing.raw_transcript !== transcript) {
+          await supa.from('call_analyses').update({ raw_transcript: transcript, analyzed_at: null }).eq('id', existing.id);
+        }
+      }
+    }
     return;
   }
 
