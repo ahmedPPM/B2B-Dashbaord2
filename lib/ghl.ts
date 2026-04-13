@@ -135,11 +135,11 @@ export class GHLClient {
   }
 
   async getOpportunityByContact(contactId: string): Promise<{ opportunities: GHLOpportunity[] }> {
-    const pipelineId = process.env.GHL_PIPELINE_ID || '';
+    // Do NOT filter by pipeline_id — leads can live on any pipeline (B2B setting,
+    // deals, etc.). We want whichever opportunity exists for this contact.
     const q = new URLSearchParams();
     q.set('location_id', this.locationId);
     q.set('contact_id', contactId);
-    if (pipelineId) q.set('pipeline_id', pipelineId);
     return this.request(`/opportunities/search?${q.toString()}`);
   }
 

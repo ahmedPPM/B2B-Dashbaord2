@@ -87,7 +87,7 @@ export default function LeadDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             <ScoreBadge score={lead.app_grading} />
-            <StagePill stage={lead.pipeline_stage} />
+            <StagePill stage={lead.pipeline_stage} name={(lead as Lead & { stage_name?: string; pipeline_name?: string }).stage_name} />
           </div>
         </div>
 

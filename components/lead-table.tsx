@@ -71,7 +71,7 @@ export function LeadTable({ leads }: { leads: Lead[] }) {
                   </Link>
                 </td>
                 <td className="px-3 py-2"><ScoreBadge score={l.app_grading} /></td>
-                <td className="px-3 py-2"><StagePill stage={l.pipeline_stage} /></td>
+                <td className="px-3 py-2"><StagePill stage={l.pipeline_stage} name={(l as Lead & { stage_name?: string }).stage_name} /></td>
                 <td className="px-3 py-2 text-zinc-400">{l.intro_show_status || '—'}</td>
                 <td className="px-3 py-2 text-zinc-400">{l.demo_show_status || '—'}</td>
                 <td className="px-3 py-2 text-zinc-400">{l.demo_assigned_closer || l.intro_closer || '—'}</td>
