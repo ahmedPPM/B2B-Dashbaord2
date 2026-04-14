@@ -433,29 +433,9 @@ export async function runBackfill(): Promise<BackfillResult> {
       eventsByContact.set(cid, arr);
     }
 
-    // Pass 1.5: import any contact that has an intro/demo calendar booking
-    // but wasn't picked up by the tagged pass.
-    for (const cid of eventsByContact.keys()) {
-      const { data: existing } = await supa
-        .from('leads')
-        .select('id')
-        .eq('ghl_contact_id', cid)
-        .maybeSingle();
-      if (existing) continue;
-      try {
-        const { contact } = await ghl.getContact(cid);
-        if (!contact?.id) continue;
-        const row = mapContactToLead(contact);
-        const { data: inserted } = await supa.from('leads').insert(row).select('id').single();
-        if (inserted) {
-          totalImported++;
-          await upsertOpportunity(cid, inserted.id);
-        }
-        await ghl.sleep(60);
-      } catch (e) {
-        console.error('import-from-calendar', cid, e);
-      }
-    }
+    // (Pass 1.5 removed) — dashboard is strictly tag-sourced
+    // (b2b typeform optin / new_lead). Calendar-derived contacts without
+    // these tags are excluded to match the sheet.
     const { data: allLeads } = await supa.from('leads').select('id, ghl_contact_id');
     for (const lead of allLeads || []) {
       const evts = eventsByContact.get(lead.ghl_contact_id) || [];

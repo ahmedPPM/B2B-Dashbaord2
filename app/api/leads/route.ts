@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const stage = url.searchParams.get('stage');
   const score = url.searchParams.get('score');
   const closed = url.searchParams.get('closed');
-  const paidOnly = url.searchParams.get('paid') !== 'false'; // default: paid only
+  const paidOnly = url.searchParams.get('paid') === 'true'; // default: all leads
 
   if (stage) q = q.eq('pipeline_stage', stage);
   if (score) q = q.eq('app_grading', parseInt(score, 10));
