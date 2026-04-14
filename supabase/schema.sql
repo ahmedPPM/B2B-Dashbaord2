@@ -176,9 +176,22 @@ CREATE TABLE IF NOT EXISTS hyros_attribution (
   last_order_date TIMESTAMPTZ,
   tags TEXT[],
   raw_payload JSONB,
+  organic BOOLEAN,
+  traffic_source TEXT,
+  ad_platform TEXT,
+  ad_name TEXT,
+  click_date TIMESTAMPTZ,
+  is_paid_ad BOOLEAN DEFAULT FALSE,
   synced_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(email)
 );
+ALTER TABLE hyros_attribution
+  ADD COLUMN IF NOT EXISTS organic BOOLEAN,
+  ADD COLUMN IF NOT EXISTS traffic_source TEXT,
+  ADD COLUMN IF NOT EXISTS ad_platform TEXT,
+  ADD COLUMN IF NOT EXISTS ad_name TEXT,
+  ADD COLUMN IF NOT EXISTS click_date TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS is_paid_ad BOOLEAN DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_hyros_email ON hyros_attribution(email);
 CREATE INDEX IF NOT EXISTS idx_hyros_lead_id ON hyros_attribution(lead_id);
 ALTER TABLE hyros_attribution ENABLE ROW LEVEL SECURITY;

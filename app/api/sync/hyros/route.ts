@@ -44,6 +44,12 @@ export async function GET(req: Request) {
           last_order_date: attr.last_order_date || null,
           tags: attr.tags || [],
           raw_payload: attr.raw_payload,
+          organic: attr.organic ?? null,
+          traffic_source: attr.traffic_source || null,
+          ad_platform: attr.ad_platform || null,
+          ad_name: attr.ad_name || null,
+          click_date: attr.click_date || null,
+          is_paid_ad: attr.is_paid_ad,
           synced_at: new Date().toISOString(),
         },
         { onConflict: 'email' }

@@ -5,11 +5,12 @@ import { annotateLeads } from '@/lib/pipelines';
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const supa = supabaseAdmin();
-  let q = supa.from('leads').select('*').order('date_opted_in', { ascending: false }).limit(1000);
+  let q = supa.from('leads').select('*').order('date_opted_in', { ascending: false }).limit(2000);
 
   const stage = url.searchParams.get('stage');
   const score = url.searchParams.get('score');
   const closed = url.searchParams.get('closed');
+  const paidOnly = url.searchParams.get('paid') !== 'false'; // default: paid only
 
   if (stage) q = q.eq('pipeline_stage', stage);
   if (score) q = q.eq('app_grading', parseInt(score, 10));
@@ -19,6 +20,37 @@ export async function GET(req: Request) {
   const { data, error } = await q;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   let leads = data || [];
+
+  // Attach Hyros attribution + is_paid_ad to each lead
+  const emails = leads.map((l) => (l.email || '').toLowerCase()).filter(Boolean);
+  const { data: hyrosRows } = await supa
+    .from('hyros_attribution')
+    .select('email, is_paid_ad, traffic_source, ad_platform, ad_name, revenue_attributed, organic')
+    .in('email', emails);
+  const hyrosByEmail = new Map((hyrosRows || []).map((r) => [r.email, r]));
+
+  leads = leads.map((l) => {
+    const h = hyrosByEmail.get((l.email || '').toLowerCase());
+    // Paid = hyros says paid, OR GHL has a campaign_id, OR lead_source mentions a known paid platform
+    const hyrosPaid = !!h?.is_paid_ad;
+    const ghlPaid = !!l.campaign_id;
+    const sourceLooksPaid = /facebook|meta|google|tiktok|youtube|instagram/i.test(l.lead_source || '');
+    const is_paid_ad = hyrosPaid || ghlPaid || sourceLooksPaid;
+    return {
+      ...l,
+      hyros_paid: hyrosPaid,
+      hyros_traffic_source: h?.traffic_source || null,
+      hyros_ad_platform: h?.ad_platform || null,
+      hyros_ad_name: h?.ad_name || null,
+      hyros_revenue: h?.revenue_attributed || 0,
+      is_paid_ad,
+    };
+  });
+
+  if (paidOnly) {
+    leads = leads.filter((l) => l.is_paid_ad);
+  }
+
   try {
     leads = await annotateLeads(leads);
   } catch (e) {
