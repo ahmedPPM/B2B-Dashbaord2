@@ -38,13 +38,17 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/leads');
-        const json = await res.json();
+        const [leadsRes, spendRes] = await Promise.all([
+          fetch('/api/leads'),
+          fetch('/api/spend'),
+        ]);
+        const leadsJson = await leadsRes.json();
+        const spendJson = await spendRes.json();
         if (cancelled) return;
-        const leadRows: Lead[] = json?.leads || [];
-        if (leadRows.length) setLeads(leadRows);
-        else setLeads(generateMockLeads(40));
-        setSpend(generateMockSpend());
+        const leadRows: Lead[] = leadsJson?.leads || [];
+        const spendRows: WindsorRow[] = spendJson?.spend || [];
+        setLeads(leadRows.length ? leadRows : generateMockLeads(40));
+        setSpend(spendRows.length ? spendRows : generateMockSpend());
       } catch {
         if (!cancelled) {
           setLeads(generateMockLeads(40));

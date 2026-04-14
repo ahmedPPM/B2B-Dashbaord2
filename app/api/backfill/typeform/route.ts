@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { typeform, TypeformClient } from '@/lib/typeform';
+import { requireCron } from '@/lib/api-auth';
 
-export async function POST() {
+export async function POST(req: Request) {
+  const denied = requireCron(req);
+  if (denied) return denied;
   const supa = supabaseAdmin();
   const forms = await typeform.listForms();
 

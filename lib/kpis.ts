@@ -113,7 +113,7 @@ export function computeKpis(
     demosCreated,
     demosBookedForMonth,
     costPerDemo: div(totalSpend, demosCreated),
-    introToDemoPct: pct(demosCreated, introsShowed),
+    introToDemoPct: pct(demosCreated, introsCreated),
     demosShowed,
     demoShowRate: pct(demosShowed, demosBookedForMonth),
     costPerShownDemo: div(totalSpend, demosShowed),

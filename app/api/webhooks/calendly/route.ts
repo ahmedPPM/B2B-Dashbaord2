@@ -14,8 +14,14 @@ interface CalendlyInviteePayload {
 export async function POST(req: Request) {
   const raw = await req.text();
   const sig = req.headers.get('calendly-webhook-signature');
-  if (process.env.CALENDLY_WEBHOOK_SECRET && !verifyWebhookSignature(raw, sig)) {
-    return NextResponse.json({ ok: false, error: 'bad signature' }, { status: 401 });
+  const secret = process.env.CALENDLY_WEBHOOK_SECRET;
+  if (secret) {
+    if (!verifyWebhookSignature(raw, sig)) {
+      return NextResponse.json({ ok: false, error: 'bad signature' }, { status: 401 });
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    console.error('Calendly webhook: CALENDLY_WEBHOOK_SECRET missing in production');
+    return NextResponse.json({ ok: false, error: 'webhook not configured' }, { status: 503 });
   }
 
   let data: CalendlyInviteePayload;

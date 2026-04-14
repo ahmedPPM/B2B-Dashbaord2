@@ -92,7 +92,7 @@ export default function LeadDetailPage() {
         </div>
 
         <dl className="grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-6 text-sm">
-          <Field label="Opted In" value={formatDate(lead.date_opted_in)} />
+          <Field label="Created On" value={formatDate(lead.date_opted_in)} />
           <Field label="Source" value={lead.lead_source || '—'} />
           <Field label="Campaign" value={lead.campaign_name || '—'} />
           <Field label="Speed to Lead" value={lead.speed_to_lead_minutes ? `${lead.speed_to_lead_minutes} min` : '—'} />

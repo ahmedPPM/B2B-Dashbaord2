@@ -1,6 +1,6 @@
 // Windsor.ai API wrapper — fetches ad spend metrics.
 
-const BASE = 'https://windsor.ai/api/v1';
+const BASE = 'https://connectors.windsor.ai';
 
 export interface WindsorSpendRow {
   date: string;
@@ -29,10 +29,13 @@ export async function fetchAdSpend(dateRange: {
   q.set('fields', 'date,campaign_id,campaign,adset_id,adset,ad_id,ad,spend,impressions,clicks');
 
   const res = await fetch(`${BASE}/all?${q.toString()}`);
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Windsor ${res.status}: ${t.slice(0, 200)}`);
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Windsor ${res.status}: ${text.slice(0, 200)}`);
+  let parsed: { data?: WindsorSpendRow[] };
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`Windsor returned non-JSON: ${text.slice(0, 200)}`);
   }
-  const data = (await res.json()) as { data?: WindsorSpendRow[] };
-  return data.data || [];
+  return parsed.data || [];
 }

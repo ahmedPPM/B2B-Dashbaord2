@@ -8,8 +8,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   }
 
-  const to = new Date();
-  const from = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+  const url = new URL(req.url);
+  const fromParam = url.searchParams.get('from');
+  const toParam = url.searchParams.get('to');
+  const to = toParam ? new Date(toParam) : new Date();
+  const from = fromParam
+    ? new Date(fromParam)
+    : new Date(Date.now() - 7 * 24 * 3600 * 1000);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
   try {

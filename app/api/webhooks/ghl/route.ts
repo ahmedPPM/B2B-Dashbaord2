@@ -6,7 +6,14 @@ import type { GHLContact } from '@/lib/ghl';
 
 function verifySignature(body: string, signature: string | null): boolean {
   const secret = process.env.GHL_WEBHOOK_SECRET;
-  if (!secret) return true; // allow in dev
+  if (!secret) {
+    // In production, refuse unsigned webhooks. Only bypass in dev.
+    if (process.env.NODE_ENV === 'production') {
+      console.error('GHL webhook: GHL_WEBHOOK_SECRET missing in production');
+      return false;
+    }
+    return true;
+  }
   if (!signature) {
     console.warn('GHL webhook: no signature header');
     return false;

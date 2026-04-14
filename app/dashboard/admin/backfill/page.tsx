@@ -41,15 +41,30 @@ export default function BackfillAdminPage() {
   }, []);
 
   const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-  const isAdmin = !adminEmail || !email || email === adminEmail;
+  // Admin gate: require both the env-configured email AND the logged-in email
+  // to match. If either is missing, deny. (Auth itself is off for now, so this
+  // page is mostly informational — but the gate must not become a backdoor.)
+  const isAdmin = !!adminEmail && !!email && email === adminEmail;
 
   async function run(kind: 'backfill' | 'analysis') {
+    // Protected endpoints require the CRON_SECRET as a bearer token.
+    // Prompt once per session and cache.
+    let token = sessionStorage.getItem('CRON_SECRET') || '';
+    if (kind === 'backfill' && !token) {
+      token = window.prompt('Enter CRON_SECRET to authorize:') || '';
+      if (!token) return;
+      sessionStorage.setItem('CRON_SECRET', token);
+    }
     setRunning(kind);
     setLog((l) => [...l, `[${new Date().toLocaleTimeString()}] starting ${kind}…`]);
     try {
       const path = kind === 'backfill' ? '/api/backfill/run' : '/api/sync/call-transcripts?manual=1';
-      const res = await fetch(path, { method: kind === 'backfill' ? 'POST' : 'GET' });
+      const res = await fetch(path, {
+        method: kind === 'backfill' ? 'POST' : 'GET',
+        headers: kind === 'backfill' ? { Authorization: `Bearer ${token}` } : {},
+      });
       const data = await res.json();
+      if (kind === 'backfill' && !data.ok) sessionStorage.removeItem('CRON_SECRET');
       setLog((l) => [...l, `[${new Date().toLocaleTimeString()}] ${kind}: ${JSON.stringify(data)}`]);
     } catch (e) {
       setLog((l) => [...l, `[${new Date().toLocaleTimeString()}] ${kind} error: ${String(e)}`]);

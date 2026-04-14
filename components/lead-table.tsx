@@ -48,7 +48,7 @@ export function LeadTable({ leads }: { leads: Lead[] }) {
         <table className="w-full text-sm">
           <thead className="bg-zinc-900/60 border-b border-zinc-800">
             <tr>
-              {th('date_opted_in', 'Opted In')}
+              {th('date_opted_in', 'Created On')}
               {th('lead_name', 'Name')}
               {th('app_grading', 'Score')}
               <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-zinc-500">Stage</th>
