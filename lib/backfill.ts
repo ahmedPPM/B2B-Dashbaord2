@@ -80,6 +80,49 @@ export function determineCallType(
 }
 
 /**
+ * Repair pre-2026 date_opted_in. A GHL contact's dateAdded can predate the
+ * 2026 B2B form opt-in (contact existed as cold lead before). Use the first
+ * 2026 appointment or call as the true opt-in proxy; fall back to Jan 1.
+ */
+export async function repairPre2026OptInDates(): Promise<{ repaired: number; defaulted: number }> {
+  const supa = supabaseAdmin();
+  const cutoff = process.env.BACKFILL_START_DATE || '2026-01-01';
+  const { data: leads } = await supa
+    .from('leads')
+    .select('id, intro_booked_for_date, intro_created_date, demo_booked_for_date')
+    .lt('date_opted_in', cutoff);
+  let repaired = 0;
+  let defaulted = 0;
+  for (const l of leads || []) {
+    const candidates = [l.intro_created_date, l.intro_booked_for_date, l.demo_booked_for_date]
+      .filter((d): d is string => !!d && new Date(d).getTime() >= new Date(cutoff).getTime())
+      .sort();
+    if (candidates[0]) {
+      await supa.from('leads').update({ date_opted_in: candidates[0] }).eq('id', l.id);
+      repaired++;
+      continue;
+    }
+    const { data: calls } = await supa
+      .from('call_analyses')
+      .select('call_date')
+      .eq('lead_id', l.id)
+      .not('call_date', 'is', null)
+      .gte('call_date', cutoff)
+      .order('call_date')
+      .limit(1);
+    const firstCall = calls?.[0]?.call_date;
+    if (firstCall) {
+      await supa.from('leads').update({ date_opted_in: firstCall }).eq('id', l.id);
+      repaired++;
+    } else {
+      await supa.from('leads').update({ date_opted_in: `${cutoff}T00:00:00Z` }).eq('id', l.id);
+      defaulted++;
+    }
+  }
+  return { repaired, defaulted };
+}
+
+/**
  * Post-pass: pick each lead's longest call near an intro/demo booking as the
  * canonical intro/demo call. Runs after all calls are imported.
  * - Intro window: [booking - 30min, min(demo_booking, booking + 48h)]
@@ -430,6 +473,15 @@ export async function runBackfill(): Promise<BackfillResult> {
       await reclassifyCallTypesForLeads();
     } catch (e) {
       console.error('reclassifyCallTypesForLeads', e);
+    }
+
+    // Repair pre-2026 date_opted_in using first 2026 appointment or call.
+    // GHL contact dateAdded can be years old if the contact existed prior to
+    // re-opting into the B2B form in 2026.
+    try {
+      await repairPre2026OptInDates();
+    } catch (e) {
+      console.error('repairPre2026OptInDates', e);
     }
 
     // Calendly intros
