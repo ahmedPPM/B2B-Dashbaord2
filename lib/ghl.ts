@@ -13,6 +13,7 @@ export interface GHLContact {
   tags?: string[];
   dateAdded?: string;
   source?: string;
+  assignedTo?: string;
   customFields?: Array<{ id: string; value: unknown }>;
   attributionSource?: {
     campaign?: string;
@@ -224,6 +225,12 @@ export class GHLClient {
       console.error('getCallTranscription', messageId, e);
       return null;
     }
+  }
+
+  async getUsers(): Promise<{ users: Array<{ id: string; name?: string; firstName?: string; lastName?: string; email?: string }> }> {
+    const q = new URLSearchParams();
+    q.set('locationId', this.locationId);
+    return this.request(`/users/?${q.toString()}`);
   }
 
   async getCalendarEvents(calendarId: string, startMs: number, endMs: number): Promise<{ events: GHLAppointment[] }> {

@@ -2,7 +2,8 @@ import Link from 'next/link';
 
 export default function AdminIndex() {
   const links = [
-    { href: '/dashboard/admin/backfill', label: 'Backfill', desc: 'Run data backfill from GHL, Calendly, Typeform, Hyros' },
+    { href: '/dashboard/admin/activity', label: 'Activity Log', desc: 'Edits, deletes, restores — with one-click restore' },
+    { href: '/dashboard/admin/backfill', label: 'Backfill', desc: 'Run data backfill from GHL, Calendly, Hyros' },
   ];
 
   return (

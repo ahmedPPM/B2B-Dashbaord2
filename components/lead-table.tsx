@@ -74,7 +74,7 @@ export function LeadTable({ leads }: { leads: Lead[] }) {
                 <td className="px-3 py-2"><StagePill stage={l.pipeline_stage} name={(l as Lead & { stage_name?: string }).stage_name} /></td>
                 <td className="px-3 py-2 text-zinc-400">{l.intro_show_status || '—'}</td>
                 <td className="px-3 py-2 text-zinc-400">{l.demo_show_status || '—'}</td>
-                <td className="px-3 py-2 text-zinc-400">{l.demo_assigned_closer || l.intro_closer || '—'}</td>
+                <td className="px-3 py-2 text-zinc-400">{l.assigned_user_name || l.demo_assigned_closer || l.intro_closer || '—'}</td>
                 <td className="px-3 py-2">
                   {l.client_closed
                     ? <span className="text-emerald-400">Yes</span>
@@ -82,7 +82,9 @@ export function LeadTable({ leads }: { leads: Lead[] }) {
                 </td>
                 <td className="px-3 py-2 text-zinc-200">{formatCurrency(l.cash_collected)}</td>
                 <td className="px-3 py-2 text-zinc-200">{formatCurrency(l.contracted_mrr)}</td>
-                <td className="px-3 py-2 text-zinc-400 truncate max-w-[180px]">{l.campaign_name || '—'}</td>
+                <td className="px-3 py-2 text-zinc-400 truncate max-w-[200px]">
+                  {l.campaign_name || l.lead_source || <span className="text-zinc-600">—</span>}
+                </td>
               </tr>
             ))}
             {sorted.length === 0 && (

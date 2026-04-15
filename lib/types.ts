@@ -22,6 +22,10 @@ export interface Lead {
   intro_show_status: string | null;
   intro_converted_to_demo: boolean;
   intro_call_outcome: string | null;
+  assigned_user_id: string | null;
+  assigned_user_name: string | null;
+  deleted_at?: string | null;
+  client_closed_date?: string | null;
   intro_closer: string | null;
   demo_booked: boolean;
   demo_created_date: string | null;
@@ -70,6 +74,12 @@ export interface CallAnalysis {
   analyzed_at: string | null;
   analysis_model: string | null;
   created_at: string;
+}
+
+export interface LeadWithCallsLike {
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  lead_source?: string | null;
 }
 
 export interface WindsorRow {
@@ -133,7 +143,12 @@ export interface HyrosAttribution {
   synced_at?: string;
 }
 
+export type CallOutcome =
+  | 'qualified' | 'not_qualified' | 'needs_followup' | 'no_show' | 'rescheduled'
+  | 'not_fit' | 'closed' | 'followup_needed' | 'not_closed';
+
 export interface CallAnalysisResult {
+  outcome?: CallOutcome;
   summary: string;
   lead_insights: string;
   call_quality_score: number;

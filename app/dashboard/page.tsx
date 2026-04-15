@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Lead, WindsorRow, KPIStats } from '@/lib/types';
-import { generateMockLeads, generateMockSpend } from '@/lib/mock-data';
 import { computeKpis } from '@/lib/kpis';
+import { useAdsOnly } from '@/lib/ads-only-context';
+import { isFromAds } from '@/lib/is-paid';
 import { supabaseBrowser } from '@/lib/supabase/browser';
 import { KpiCard } from '@/components/kpi-card';
 import { Filters, defaultFilters, type FilterState } from '@/components/filters';
@@ -33,6 +34,7 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [view, setView] = useState<'summary' | 'leads'>('leads');
   const [loaded, setLoaded] = useState(false);
+  const { adsOnly } = useAdsOnly();
 
   useEffect(() => {
     let cancelled = false;
@@ -45,15 +47,10 @@ export default function DashboardPage() {
         const leadsJson = await leadsRes.json();
         const spendJson = await spendRes.json();
         if (cancelled) return;
-        const leadRows: Lead[] = leadsJson?.leads || [];
-        const spendRows: WindsorRow[] = spendJson?.spend || [];
-        setLeads(leadRows.length ? leadRows : generateMockLeads(40));
-        setSpend(spendRows.length ? spendRows : generateMockSpend());
-      } catch {
-        if (!cancelled) {
-          setLeads(generateMockLeads(40));
-          setSpend(generateMockSpend());
-        }
+        setLeads((leadsJson?.leads || []) as Lead[]);
+        setSpend((spendJson?.spend || []) as WindsorRow[]);
+      } catch (e) {
+        console.error('dashboard fetch', e);
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -84,33 +81,70 @@ export default function DashboardPage() {
   const range = useMemo(() => monthRange(filters.month), [filters.month]);
 
   const filtered = useMemo(() => {
+    const matchStatus = (val: string | null | undefined, pick: string) => {
+      const v = (val || '').toLowerCase();
+      // Normalize to buckets so "Cancelled"/"cancelled", "Showed"/"showed" match.
+      if (pick === 'showed') return v.includes('show') && !v.includes('no');
+      if (pick === 'noshow') return v.includes('no') && v.includes('show');
+      if (pick === 'cancelled') return v.includes('cancel');
+      if (pick === 'scheduled') return v === 'scheduled' || v === 'confirmed' || v === 'new';
+      return v === pick.toLowerCase();
+    };
     return leads.filter((l) => {
+      if (adsOnly && !isFromAds(l)) return false;
       if (l.date_opted_in) {
         const t = new Date(l.date_opted_in).getTime();
         if (t < range.from.getTime() || t > range.to.getTime()) return false;
       }
       if (filters.score && String(l.app_grading) !== filters.score) return false;
-      if (filters.stage && l.pipeline_stage !== filters.stage) return false;
-      if (filters.introStatus && l.intro_show_status !== filters.introStatus) return false;
-      if (filters.demoStatus && l.demo_show_status !== filters.demoStatus) return false;
+      if (filters.stage) {
+        const stageName = (l as Lead & { stage_name?: string }).stage_name || '';
+        if (stageName.toLowerCase() !== filters.stage.toLowerCase()) return false;
+      }
+      if (filters.introStatus && !matchStatus(l.intro_show_status, filters.introStatus)) return false;
+      if (filters.demoStatus && !matchStatus(l.demo_show_status, filters.demoStatus)) return false;
       if (filters.closed === 'yes' && !l.client_closed) return false;
       if (filters.closed === 'no' && l.client_closed) return false;
-      if (filters.closer && l.demo_assigned_closer !== filters.closer && l.intro_closer !== filters.closer) return false;
-      if (filters.campaign && l.campaign_name !== filters.campaign) return false;
+      if (filters.closer) {
+        const f = filters.closer.toLowerCase();
+        const match =
+          (l.assigned_user_name || '').toLowerCase() === f ||
+          (l.demo_assigned_closer || '').toLowerCase() === f ||
+          (l.intro_closer || '').toLowerCase() === f;
+        if (!match) return false;
+      }
+      if (filters.campaign) {
+        if ((l.campaign_name || '').toLowerCase() !== filters.campaign.toLowerCase()) return false;
+      }
       return true;
     });
-  }, [leads, filters, range]);
+  }, [leads, filters, range, adsOnly]);
 
   const kpis: KPIStats = useMemo(() => computeKpis(filtered, spend, range), [filtered, spend, range]);
 
-  const closers = useMemo(() => Array.from(new Set(leads.flatMap((l) => [l.intro_closer, l.demo_assigned_closer]).filter(Boolean) as string[])), [leads]);
-  const campaigns = useMemo(() => Array.from(new Set(leads.map((l) => l.campaign_name).filter(Boolean) as string[])), [leads]);
+  const closers = useMemo(() => {
+    const all = leads.flatMap((l) => [l.assigned_user_name, l.intro_closer, l.demo_assigned_closer]).filter(Boolean) as string[];
+    return Array.from(new Set(all)).sort();
+  }, [leads]);
+  const campaigns = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const l of leads) {
+      if (!l.campaign_name) continue;
+      const key = l.campaign_name.toLowerCase();
+      if (!seen.has(key)) seen.set(key, l.campaign_name);
+    }
+    return Array.from(seen.values()).sort();
+  }, [leads]);
+  const stages = useMemo(() => {
+    const all = leads.map((l) => (l as Lead & { stage_name?: string }).stage_name).filter(Boolean) as string[];
+    return Array.from(new Set(all)).sort();
+  }, [leads]);
 
   if (!loaded) return <div className="text-zinc-500">Loading…</div>;
 
   return (
     <div className="space-y-4">
-      <Filters value={filters} onChange={setFilters} closers={closers} campaigns={campaigns} />
+      <Filters value={filters} onChange={setFilters} closers={closers} campaigns={campaigns} stages={stages} />
 
       {/* Row 1: Spend / Leads / CPL / Score mix */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

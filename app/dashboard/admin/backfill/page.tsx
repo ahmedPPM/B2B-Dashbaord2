@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabaseBrowser } from '@/lib/supabase/browser';
 import { Play, Loader2, BrainCircuit, DatabaseBackup } from 'lucide-react';
 
 interface Stats {
@@ -13,16 +12,12 @@ interface Stats {
 
 export default function BackfillAdminPage() {
   const [stats, setStats] = useState<Stats>({ totalLeads: 0, skipped: 0, calls: 0, pending: 0 });
-  const [email, setEmail] = useState<string>('');
   const [running, setRunning] = useState<null | 'backfill' | 'analysis'>(null);
   const [log, setLog] = useState<string[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const supa = supabaseBrowser();
-        const { data: user } = await supa.auth.getUser();
-        setEmail(user.user?.email || '');
         const res = await fetch('/api/stats/counts');
         const json = await res.json();
         if (json?.ok) {
@@ -39,12 +34,6 @@ export default function BackfillAdminPage() {
       }
     })();
   }, []);
-
-  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-  // Admin gate: require both the env-configured email AND the logged-in email
-  // to match. If either is missing, deny. (Auth itself is off for now, so this
-  // page is mostly informational — but the gate must not become a backdoor.)
-  const isAdmin = !!adminEmail && !!email && email === adminEmail;
 
   async function run(kind: 'backfill' | 'analysis') {
     // Protected endpoints require the CRON_SECRET as a bearer token.
@@ -71,10 +60,6 @@ export default function BackfillAdminPage() {
     } finally {
       setRunning(null);
     }
-  }
-
-  if (!isAdmin) {
-    return <div className="card p-6 text-sm text-zinc-400">Admin only.</div>;
   }
 
   return (

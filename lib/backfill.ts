@@ -45,8 +45,9 @@ export function mapContactToLead(c: GHLContact): Record<string, unknown> {
     campaign_name: attr.campaign || null,
     ad_set_name: attr.adSetName || null,
     ad_name: attr.adName || null,
-    lead_source: c.source || attr.utmSource || null,
+    lead_source: c.source || attr.utmSource || 'Organic',
     lead_tag: (c.tags || [])[0] || null,
+    assigned_user_id: c.assignedTo || null,
     backfilled: true,
     updated_at: new Date().toISOString(),
   };
@@ -77,6 +78,37 @@ export function determineCallType(
   if (introDiff < HOUR && introDiff <= demoDiff) return 'intro';
   if (demoDiff < HOUR) return 'demo';
   return 'other';
+}
+
+/**
+ * Resolve `assigned_user_id` → `assigned_user_name` for all leads by pulling
+ * GHL users once and mapping IDs to display names.
+ */
+export async function resolveAssignedUserNames(): Promise<number> {
+  const supa = supabaseAdmin();
+  let usersMap: Record<string, string> = {};
+  try {
+    const { users } = await ghl.getUsers();
+    for (const u of users || []) {
+      const name = u.name || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || u.id;
+      usersMap[u.id] = name;
+    }
+  } catch (e) {
+    console.error('resolveAssignedUserNames: getUsers failed', e);
+    return 0;
+  }
+  const { data: leads } = await supa
+    .from('leads')
+    .select('id, assigned_user_id, assigned_user_name')
+    .not('assigned_user_id', 'is', null);
+  let updated = 0;
+  for (const l of leads || []) {
+    const name = usersMap[l.assigned_user_id as string];
+    if (!name || name === l.assigned_user_name) continue;
+    await supa.from('leads').update({ assigned_user_name: name }).eq('id', l.id);
+    updated++;
+  }
+  return updated;
 }
 
 /**
@@ -136,40 +168,49 @@ export async function reclassifyCallTypesForLeads(): Promise<{ intro: number; de
     .select('id, intro_booked_for_date, demo_booked_for_date');
   let intro = 0;
   let demo = 0;
+  const WEEK = 7 * 24 * 3600_000;
   for (const l of leads || []) {
+    // Pull ALL calls for this lead — don't filter by duration upfront (intro calls
+    // can be short; voicemails without duration should still be considered).
     const { data: calls } = await supa
       .from('call_analyses')
-      .select('id, call_date, call_duration_seconds')
-      .eq('lead_id', l.id)
-      .gte('call_duration_seconds', 60);
+      .select('id, call_date, call_duration_seconds, call_type')
+      .eq('lead_id', l.id);
     if (!calls?.length) continue;
 
     const introT = l.intro_booked_for_date ? new Date(l.intro_booked_for_date).getTime() : null;
     const demoT = l.demo_booked_for_date ? new Date(l.demo_booked_for_date).getTime() : null;
 
-    if (introT) {
-      const end = Math.min(demoT || Infinity, introT + 48 * 3600_000);
-      const picks = calls
-        .filter((c) => {
-          const t = c.call_date ? new Date(c.call_date).getTime() : 0;
-          return t >= introT - 30 * 60_000 && t <= end;
-        })
-        .sort((a, b) => (b.call_duration_seconds || 0) - (a.call_duration_seconds || 0));
-      if (picks[0]) {
-        await supa.from('call_analyses').update({ call_type: 'intro' }).eq('id', picks[0].id);
-        intro++;
+    const pickBest = (center: number, windowMs: number, excludeId?: string) => {
+      const candidates = calls
+        .filter((c) => c.id !== excludeId)
+        .map((c) => ({ c, t: c.call_date ? new Date(c.call_date).getTime() : 0 }))
+        .filter((x) => x.t > 0 && Math.abs(x.t - center) <= windowMs);
+      if (!candidates.length) return null;
+      // Prefer longest duration; fallback to closest in time if durations null.
+      candidates.sort((a, b) => {
+        const da = a.c.call_duration_seconds || 0;
+        const db = b.c.call_duration_seconds || 0;
+        if (db !== da) return db - da;
+        return Math.abs(a.t - center) - Math.abs(b.t - center);
+      });
+      return candidates[0].c;
+    };
+
+    let demoPick: string | undefined;
+    if (demoT) {
+      const pick = pickBest(demoT, WEEK);
+      if (pick) {
+        await supa.from('call_analyses').update({ call_type: 'demo' }).eq('id', pick.id);
+        demoPick = pick.id;
+        demo++;
       }
     }
-    if (demoT) {
-      const picks = calls
-        .filter((c) => {
-          const t = c.call_date ? new Date(c.call_date).getTime() : 0;
-          return t >= demoT - 30 * 60_000 && t <= demoT + 48 * 3600_000;
-        })
-        .sort((a, b) => (b.call_duration_seconds || 0) - (a.call_duration_seconds || 0));
-      if (picks[0]) {
-        await supa.from('call_analyses').update({ call_type: 'demo' }).eq('id', picks[0].id);
-        demo++;
+    if (introT) {
+      const pick = pickBest(introT, WEEK, demoPick);
+      if (pick) {
+        await supa.from('call_analyses').update({ call_type: 'intro' }).eq('id', pick.id);
+        intro++;
       }
     }
   }
@@ -462,6 +503,13 @@ export async function runBackfill(): Promise<BackfillResult> {
       await repairPre2026OptInDates();
     } catch (e) {
       console.error('repairPre2026OptInDates', e);
+    }
+
+    // Resolve GHL assigned user IDs to display names (Closer field)
+    try {
+      await resolveAssignedUserNames();
+    } catch (e) {
+      console.error('resolveAssignedUserNames', e);
     }
 
     // Calendly intros

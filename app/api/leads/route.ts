@@ -5,7 +5,9 @@ import { annotateLeads } from '@/lib/pipelines';
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const supa = supabaseAdmin();
+  const includeDeleted = url.searchParams.get('includeDeleted') === 'true';
   let q = supa.from('leads').select('*').order('date_opted_in', { ascending: false }).limit(2000);
+  if (!includeDeleted) q = q.is('deleted_at', null);
 
   const stage = url.searchParams.get('stage');
   const score = url.searchParams.get('score');

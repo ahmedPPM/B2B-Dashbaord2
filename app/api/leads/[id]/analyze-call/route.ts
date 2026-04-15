@@ -33,6 +33,18 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           analysis_model: ANALYSIS_MODEL,
         })
         .eq('id', row.id);
+
+      // Also write the inferred outcome back onto the lead so the pipeline
+      // table reflects AI judgment.
+      if (r.outcome) {
+        const patch: Record<string, unknown> = {};
+        if (row.call_type === 'intro') patch.intro_call_outcome = r.outcome;
+        else if (row.call_type === 'demo') patch.demo_call_outcome = r.outcome;
+        if (Object.keys(patch).length) {
+          await supa.from('leads').update(patch).eq('id', id);
+        }
+      }
+
       count++;
     } catch (e) {
       errors.push(String(e).slice(0, 120));

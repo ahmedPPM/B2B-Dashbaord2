@@ -4,6 +4,13 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-20250514';
 
 function buildPrompt(transcript: string, callType: 'intro' | 'demo' | 'other') {
+  const outcomes =
+    callType === 'intro'
+      ? '"qualified" | "not_qualified" | "needs_followup" | "no_show" | "rescheduled" | "not_fit"'
+      : callType === 'demo'
+      ? '"closed" | "followup_needed" | "not_closed" | "no_show" | "rescheduled" | "not_fit"'
+      : '"qualified" | "not_qualified" | "needs_followup" | "closed" | "not_closed" | "no_show" | "rescheduled"';
+
   return `You are an elite sales analyst reviewing a ${callType} call for Premier Pool Marketing, a B2B agency that helps pool service companies scale via paid advertising.
 
 Review the transcript and respond in STRICT JSON with this exact shape:
@@ -15,7 +22,8 @@ Review the transcript and respond in STRICT JSON with this exact shape:
   "closer_performance": "How did the closer do? Specific moments of strength or weakness.",
   "next_steps": "What are the concrete next steps? Who owes what, by when.",
   "red_flags": "Any reasons this deal might not close — objections not handled, misalignment, bad fit signals. Empty string if none.",
-  "buying_signals": "Specific phrases or moments showing buyer intent. Empty string if none."
+  "buying_signals": "Specific phrases or moments showing buyer intent. Empty string if none.",
+  "outcome": ${outcomes} — pick the single best label for the call's outcome
 }
 
 Return ONLY the JSON object. No prose, no code fences.

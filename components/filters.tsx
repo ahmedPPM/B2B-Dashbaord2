@@ -22,11 +22,13 @@ export function Filters({
   onChange,
   closers,
   campaigns,
+  stages,
 }: {
   value: FilterState;
   onChange: (v: FilterState) => void;
   closers: string[];
   campaigns: string[];
+  stages?: string[];
 }) {
   const set = <K extends keyof FilterState>(k: K, v: FilterState[K]) =>
     onChange({ ...value, [k]: v });
@@ -48,16 +50,14 @@ export function Filters({
 
         <select className="input" value={value.stage} onChange={(e) => set('stage', e.target.value)}>
           <option value="">All stages</option>
-          <option value="new_lead">New lead</option>
-          <option value="intro_booked">Intro booked</option>
-          <option value="intro_showed">Intro showed</option>
-          <option value="demo_booked">Demo booked</option>
-          <option value="demo_showed">Demo showed</option>
-          <option value="closed">Closed</option>
+          {(stages && stages.length ? stages : ['New Lead','Intro Booked','Intro Showed','Demo Booked','Demo Showed','Closed']).map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
         </select>
 
         <select className="input" value={value.introStatus} onChange={(e) => set('introStatus', e.target.value)}>
           <option value="">Intro status</option>
+          <option value="scheduled">Scheduled</option>
           <option value="showed">Showed</option>
           <option value="noshow">No-show</option>
           <option value="cancelled">Cancelled</option>
@@ -65,6 +65,7 @@ export function Filters({
 
         <select className="input" value={value.demoStatus} onChange={(e) => set('demoStatus', e.target.value)}>
           <option value="">Demo status</option>
+          <option value="scheduled">Scheduled</option>
           <option value="showed">Showed</option>
           <option value="noshow">No-show</option>
           <option value="cancelled">Cancelled</option>
