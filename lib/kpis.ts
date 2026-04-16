@@ -39,6 +39,24 @@ export function computeKpis(
   const periodLeads = leads.filter((l) => inRange(l.date_opted_in, range));
   const totalLeads = periodLeads.length;
 
+  // Status helpers — case-insensitive & pattern-based so mixed GHL values
+  // (Scheduled / confirmed / Showed / showed / noshow / Cancelled) behave
+  // consistently. Show-rate policy (per Anas): default = SHOWED unless
+  // explicitly marked no-show OR cancelled. This matches the team process
+  // where Eraldi marks only failures, not successes.
+  const isNoShow = (s: string | null | undefined) => {
+    const v = (s || '').toLowerCase();
+    return v.includes('no') && v.includes('show');
+  };
+  const isCancelled = (s: string | null | undefined) => {
+    const v = (s || '').toLowerCase();
+    return v.includes('cancel');
+  };
+  const isShownDefault = (s: string | null | undefined) => {
+    // anything that isn't explicitly no-show/cancelled → counts as shown
+    return !isNoShow(s) && !isCancelled(s);
+  };
+
   // Intros
   const introsCreated = periodLeads.filter((l) => l.intro_created_date).length;
   const introsBookedForMonth = leads.filter((l) =>
@@ -47,17 +65,13 @@ export function computeKpis(
   const introsShowed = leads.filter(
     (l) =>
       inRange(l.intro_booked_for_date, range) &&
-      (l.intro_show_status === 'showed' || l.intro_show_status === 'completed')
+      isShownDefault(l.intro_show_status)
   ).length;
   const introNoShow = leads.filter(
-    (l) =>
-      inRange(l.intro_booked_for_date, range) &&
-      l.intro_show_status === 'noshow'
+    (l) => inRange(l.intro_booked_for_date, range) && isNoShow(l.intro_show_status)
   ).length;
   const introCancelled = leads.filter(
-    (l) =>
-      inRange(l.intro_booked_for_date, range) &&
-      l.intro_show_status === 'cancelled'
+    (l) => inRange(l.intro_booked_for_date, range) && isCancelled(l.intro_show_status)
   ).length;
 
   const trashLeads = periodLeads.filter((l) => l.app_grading === 1).length;
@@ -72,7 +86,7 @@ export function computeKpis(
   const demosShowed = leads.filter(
     (l) =>
       inRange(l.demo_booked_for_date, range) &&
-      (l.demo_show_status === 'showed' || l.demo_show_status === 'completed')
+      isShownDefault(l.demo_show_status)
   ).length;
 
   // Closes

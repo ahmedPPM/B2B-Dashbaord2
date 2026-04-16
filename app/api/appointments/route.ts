@@ -84,6 +84,15 @@ export async function GET(req: Request) {
   if (from) filtered = filtered.filter((r) => !r.booked_for || r.booked_for >= from);
   if (to) filtered = filtered.filter((r) => !r.booked_for || r.booked_for <= `${to}T23:59:59Z`);
 
+  // Status classifiers — default to SHOWED unless explicitly no-show or cancelled.
+  // (Policy: Eraldi marks only failures; unmarked / Scheduled / confirmed → showed.)
+  const isNo = (s: string | null) => {
+    const v = (s || '').toLowerCase();
+    return v.includes('no') && v.includes('show');
+  };
+  const isCancel = (s: string | null) => (s || '').toLowerCase().includes('cancel');
+  const isShown = (s: string | null) => !isNo(s) && !isCancel(s);
+
   // Campaign breakdown: how many appts per campaign
   const byCampaign = new Map<string, { campaign_name: string; total: number; intros: number; demos: number; showed: number; noshow: number; cancelled: number }>();
   for (const r of filtered) {
@@ -93,10 +102,9 @@ export async function GET(req: Request) {
     row.total++;
     if (r.type === 'intro') row.intros++;
     else row.demos++;
-    const s = (r.status || '').toLowerCase();
-    if (s.includes('show') && !s.includes('no')) row.showed++;
-    else if (s.includes('no')) row.noshow++;
-    else if (s.includes('cancel')) row.cancelled++;
+    if (isNo(r.status)) row.noshow++;
+    else if (isCancel(r.status)) row.cancelled++;
+    else row.showed++;
     byCampaign.set(key, row);
   }
   const campaigns = Array.from(byCampaign.values()).sort((a, b) => b.total - a.total);
@@ -105,9 +113,9 @@ export async function GET(req: Request) {
     total: filtered.length,
     intros: filtered.filter((r) => r.type === 'intro').length,
     demos: filtered.filter((r) => r.type === 'demo').length,
-    showed: filtered.filter((r) => (r.status || '').toLowerCase().includes('show') && !(r.status || '').toLowerCase().includes('no')).length,
-    noshow: filtered.filter((r) => (r.status || '').toLowerCase().includes('no')).length,
-    cancelled: filtered.filter((r) => (r.status || '').toLowerCase().includes('cancel')).length,
+    showed: filtered.filter((r) => isShown(r.status)).length,
+    noshow: filtered.filter((r) => isNo(r.status)).length,
+    cancelled: filtered.filter((r) => isCancel(r.status)).length,
     upcoming: filtered.filter((r) => r.booked_for && r.booked_for > new Date().toISOString()).length,
   } });
 }

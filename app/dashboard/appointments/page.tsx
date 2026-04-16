@@ -91,10 +91,13 @@ export default function AppointmentsPage() {
       if (typeFilter !== 'all' && r.type !== typeFilter) return false;
       if (statusFilter !== 'all') {
         const s = (r.status || '').toLowerCase();
-        if (statusFilter === 'showed' && !(s.includes('show') && !s.includes('no'))) return false;
-        if (statusFilter === 'noshow' && !s.includes('no')) return false;
-        if (statusFilter === 'cancelled' && !s.includes('cancel')) return false;
-        if (statusFilter === 'scheduled' && (s.includes('show') || s.includes('no') || s.includes('cancel'))) return false;
+        const isNo = s.includes('no') && s.includes('show');
+        const isCancel = s.includes('cancel');
+        // Default-shown policy: anything not marked no-show/cancelled is counted as shown.
+        if (statusFilter === 'showed' && (isNo || isCancel)) return false;
+        if (statusFilter === 'noshow' && !isNo) return false;
+        if (statusFilter === 'cancelled' && !isCancel) return false;
+        if (statusFilter === 'scheduled' && (isNo || isCancel)) return false;
       }
       if (!q) return true;
       return (
