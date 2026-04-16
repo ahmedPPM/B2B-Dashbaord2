@@ -128,7 +128,36 @@ export default function ClientsPage() {
       <div className="text-xs text-zinc-500">{sortedFiltered.length} of {active.length} clients</div>
 
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-zinc-800/50">
+          {sortedFiltered.map((l) => {
+            const fromAds = !!(l.campaign_name || l.campaign_id);
+            return (
+              <Link key={l.id} href={`/dashboard/leads/${l.id}`} className="block p-4 hover:bg-zinc-900/40">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <div className="text-zinc-100 font-medium truncate">{l.lead_name || l.email || '—'}</div>
+                    {l.email && <div className="text-xs text-zinc-500 truncate">{l.email}</div>}
+                  </div>
+                  <SourceBadge fromAds={fromAds} source={l.lead_source} />
+                </div>
+                <div className="grid grid-cols-2 gap-y-1 gap-x-3 text-xs text-zinc-400">
+                  <div><span className="text-zinc-600">Won:</span> <span className="text-emerald-400">{formatDate(l.client_closed_date || null) || '—'}</span></div>
+                  <div><span className="text-zinc-600">Closer:</span> {l.assigned_user_name || '—'}</div>
+                  <div><span className="text-zinc-600">Cash:</span> <span className="text-zinc-100 font-medium">{formatCurrency(l.cash_collected)}</span></div>
+                  <div><span className="text-zinc-600">MRR:</span> {formatCurrency(l.contracted_mrr)}</div>
+                  {l.campaign_name && <div className="col-span-2 truncate"><span className="text-zinc-600">Campaign:</span> {l.campaign_name}</div>}
+                </div>
+              </Link>
+            );
+          })}
+          {!loading && sortedFiltered.length === 0 && (
+            <div className="p-6 text-center text-zinc-500 text-sm">No clients match.</div>
+          )}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-zinc-900/60 border-b border-zinc-800">
               <tr>

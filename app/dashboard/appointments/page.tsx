@@ -204,7 +204,33 @@ export default function AppointmentsPage() {
 
       {/* Main table */}
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-zinc-800/50">
+          {sortedFiltered.map((r) => (
+            <Link key={r.id} href={`/dashboard/leads/${r.lead_id}`} className="block p-4 hover:bg-zinc-900/40">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="min-w-0">
+                  <div className="text-zinc-100 font-medium truncate">{r.lead_name || r.email || '—'}</div>
+                  <div className="text-xs text-zinc-500 truncate">{formatDateTime(r.booked_for)}</div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <TypeBadge type={r.type} />
+                  <StatusBadge status={r.status} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 text-xs text-zinc-400">
+                <div><span className="text-zinc-600">Closer:</span> {r.assigned_user_name || r.closer || '—'}</div>
+                <div className="truncate"><span className="text-zinc-600">Campaign:</span> {r.campaign_name || '—'}</div>
+              </div>
+            </Link>
+          ))}
+          {!loading && sortedFiltered.length === 0 && (
+            <div className="p-6 text-center text-zinc-500 text-sm">No appointments in this range.</div>
+          )}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-zinc-900/60 border-b border-zinc-800">
               <tr>
