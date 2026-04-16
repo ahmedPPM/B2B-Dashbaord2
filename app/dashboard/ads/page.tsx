@@ -112,7 +112,7 @@ export default function AdsPage() {
             <button
               key={r.label}
               onClick={() => setRangeIdx(i)}
-              className={`px-3 py-1.5 text-xs rounded ${i === rangeIdx ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
+              className={`px-3 py-2 text-xs rounded min-h-[40px] ${i === rangeIdx ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
             >
               {r.label}
             </button>
@@ -170,7 +170,45 @@ export default function AdsPage() {
             />
           </div>
         </div>
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-zinc-800/50">
+          {sortedFiltered.map((r) => (
+            <details key={(r.campaign_id || '') + (r.campaign_name || '')} className="group">
+              <summary className="p-4 cursor-pointer list-none hover:bg-zinc-900/40">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="text-sm text-zinc-100 font-medium min-w-0 truncate flex-1">
+                    {r.campaign_name || <span className="text-zinc-500">Unattributed</span>}
+                  </div>
+                  <div className="text-xs text-zinc-500 shrink-0 group-open:rotate-90 transition">▸</div>
+                </div>
+                <div className="grid grid-cols-3 gap-x-3 text-xs text-zinc-400">
+                  <div><span className="text-zinc-600">Spend</span><div className="text-zinc-100 font-semibold">{formatCurrency(r.spend)}</div></div>
+                  <div><span className="text-zinc-600">Leads</span><div className="text-zinc-100 font-semibold">{r.leads}</div></div>
+                  <div><span className="text-zinc-600">ROAS</span><div className={r.roas_cash >= 1 ? 'text-emerald-400 font-semibold' : 'text-zinc-100 font-semibold'}>{r.spend ? `${r.roas_cash.toFixed(1)}x` : '—'}</div></div>
+                </div>
+              </summary>
+              <div className="px-4 pb-4 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-zinc-400">
+                <div><span className="text-zinc-600">Impr:</span> {r.impressions.toLocaleString()}</div>
+                <div><span className="text-zinc-600">Clicks:</span> {r.clicks.toLocaleString()}</div>
+                <div><span className="text-zinc-600">CTR:</span> {r.ctr.toFixed(2)}%</div>
+                <div><span className="text-zinc-600">CPC:</span> {formatCurrency(r.cpc)}</div>
+                <div><span className="text-zinc-600">CPL:</span> {r.leads ? formatCurrency(r.cpl) : '—'}</div>
+                <div><span className="text-zinc-600">Intros:</span> {r.intros_booked}</div>
+                <div><span className="text-zinc-600">Demos:</span> {r.demos_booked}</div>
+                <div><span className="text-zinc-600">Closed:</span> {r.clients_closed}</div>
+                <div><span className="text-zinc-600">CPA:</span> {r.clients_closed ? formatCurrency(r.cpa) : '—'}</div>
+                <div><span className="text-zinc-600">Cash:</span> {formatCurrency(r.cash_collected)}</div>
+                <div className="col-span-2"><span className="text-zinc-600">Hyros Rev:</span> {formatCurrency(r.hyros_revenue)}</div>
+              </div>
+            </details>
+          ))}
+          {sortedFiltered.length === 0 && !loading && (
+            <div className="p-6 text-center text-zinc-500 text-sm">No data in this range.</div>
+          )}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-zinc-900/60 border-b border-zinc-800">
               <tr>

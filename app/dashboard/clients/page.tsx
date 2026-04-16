@@ -105,7 +105,7 @@ export default function ClientsPage() {
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-3 py-1.5 text-xs rounded ${view === v ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
+              className={`px-3 py-2 text-xs rounded min-h-[40px] ${view === v ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
             >
               {v === 'all' ? 'All' : v === 'from_ads' ? 'From Ads' : 'Organic'}
               <span className="ml-1.5 text-[10px] opacity-60">

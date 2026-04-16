@@ -72,7 +72,7 @@ export default function ActivityPage() {
               <button
                 key={a}
                 onClick={() => setActionFilter(a)}
-                className={`px-3 py-1.5 text-xs rounded ${actionFilter === a ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
+                className={`px-3 py-2 text-xs rounded min-h-[40px] ${actionFilter === a ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
               >
                 {a}
               </button>

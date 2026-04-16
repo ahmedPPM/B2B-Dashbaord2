@@ -125,7 +125,7 @@ export default function AppointmentsPage() {
             <button
               key={r.label}
               onClick={() => setRangeIdx(i)}
-              className={`px-3 py-1.5 text-xs rounded ${i === rangeIdx ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
+              className={`px-3 py-2 text-xs rounded min-h-[40px] ${i === rangeIdx ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
             >
               {r.label}
             </button>

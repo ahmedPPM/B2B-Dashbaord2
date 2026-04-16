@@ -153,8 +153,8 @@ export default function LeadDetailPage() {
           <Field label="Demo Outcome" value={lead.demo_call_outcome || '—'} />
 
           <EditableField label="Closed" value={lead.client_closed ? 'Yes' : 'No'} onSave={(v) => savePatch({ client_closed: /^y/i.test(v) })} placeholder="Yes/No" />
-          <EditableField label="Cash" value={lead.cash_collected ? String(lead.cash_collected) : ''} onSave={(v) => savePatch({ cash_collected: v ? Number(v) : null })} placeholder="0" />
-          <EditableField label="MRR" value={lead.contracted_mrr ? String(lead.contracted_mrr) : ''} onSave={(v) => savePatch({ contracted_mrr: v ? Number(v) : null })} placeholder="0" />
+          <EditableField label="Cash" value={lead.cash_collected ? String(lead.cash_collected) : ''} onSave={(v) => savePatch({ cash_collected: v ? Number(v) : null })} placeholder="0" numeric />
+          <EditableField label="MRR" value={lead.contracted_mrr ? String(lead.contracted_mrr) : ''} onSave={(v) => savePatch({ contracted_mrr: v ? Number(v) : null })} placeholder="0" numeric />
           <EditableField label="Why Not Close" value={lead.why_didnt_close || ''} onSave={(v) => savePatch({ why_didnt_close: v || null })} placeholder="—" />
         </dl>
 
@@ -214,18 +214,18 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EditableField({ label, value, onSave, placeholder }: { label: string; value: string; onSave: (v: string) => void | Promise<void>; placeholder?: string }) {
+function EditableField({ label, value, onSave, placeholder, numeric }: { label: string; value: string; onSave: (v: string) => void | Promise<void>; placeholder?: string; numeric?: boolean }) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-wider text-zinc-500">{label}</dt>
       <dd className="text-zinc-200 mt-0.5">
-        <EditableText value={value} onSave={onSave} placeholder={placeholder} />
+        <EditableText value={value} onSave={onSave} placeholder={placeholder} numeric={numeric} />
       </dd>
     </div>
   );
 }
 
-function EditableText({ value, onSave, placeholder, className }: { value: string; onSave: (v: string) => void | Promise<void>; placeholder?: string; className?: string }) {
+function EditableText({ value, onSave, placeholder, className, numeric }: { value: string; onSave: (v: string) => void | Promise<void>; placeholder?: string; className?: string; numeric?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   useEffect(() => { setDraft(value); }, [value]);
@@ -234,6 +234,8 @@ function EditableText({ value, onSave, placeholder, className }: { value: string
     return (
       <input
         autoFocus
+        type={numeric ? 'text' : 'text'}
+        inputMode={numeric ? 'decimal' : undefined}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={async () => {
