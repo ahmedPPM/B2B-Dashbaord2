@@ -10,6 +10,7 @@ import { KpiCard } from '@/components/kpi-card';
 import { Filters, defaultFilters, type FilterState } from '@/components/filters';
 import { LeadTable } from '@/components/lead-table';
 import { formatCurrency, formatPercent } from '@/lib/utils';
+import Link from 'next/link';
 import { Table, List } from 'lucide-react';
 
 const MONTH_INDEX: Record<string, number> = {
@@ -122,6 +123,21 @@ export default function DashboardPage() {
 
   const kpis: KPIStats = useMemo(() => computeKpis(filtered, spend, range), [filtered, spend, range]);
 
+  // Demo no-show / cancelled counts (derived, for drill-down KPI cards).
+  const demoNoShow = useMemo(() => filtered.filter((l) => {
+    if (!l.demo_booked_for_date) return false;
+    const t = new Date(l.demo_booked_for_date).getTime();
+    if (t < range.from.getTime() || t > range.to.getTime()) return false;
+    const s = (l.demo_show_status || '').toLowerCase();
+    return s.includes('no') && s.includes('show');
+  }).length, [filtered, range]);
+  const demoCancelled = useMemo(() => filtered.filter((l) => {
+    if (!l.demo_booked_for_date) return false;
+    const t = new Date(l.demo_booked_for_date).getTime();
+    if (t < range.from.getTime() || t > range.to.getTime()) return false;
+    return (l.demo_show_status || '').toLowerCase().includes('cancel');
+  }).length, [filtered, range]);
+
   const closers = useMemo(() => {
     const all = leads.flatMap((l) => [l.assigned_user_name, l.intro_closer, l.demo_assigned_closer]).filter(Boolean) as string[];
     return Array.from(new Set(all)).sort();
@@ -181,8 +197,12 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KpiCard label="Intros Showed" value={kpis.introsShowed} accent="positive" />
-        <KpiCard label="No-Show" value={kpis.introNoShow} accent="negative" />
-        <KpiCard label="Cancelled" value={kpis.introCancelled} accent="negative" />
+        <Link href="/dashboard/appointments?type=intro&status=noshow" className="contents">
+          <div className="cursor-pointer hover:opacity-90"><KpiCard label="Intro No-Show →" value={kpis.introNoShow} accent="negative" /></div>
+        </Link>
+        <Link href="/dashboard/appointments?type=intro&status=cancelled" className="contents">
+          <div className="cursor-pointer hover:opacity-90"><KpiCard label="Intro Cancelled →" value={kpis.introCancelled} accent="negative" /></div>
+        </Link>
         <KpiCard label="DQ Rate" value={formatPercent(kpis.dqRate)} accent="negative" />
         <KpiCard label="Intro Show Rate" value={formatPercent(kpis.introShowRate)} accent="positive" />
       </div>
@@ -202,6 +222,16 @@ export default function DashboardPage() {
         <KpiCard label="Clients Closed" value={kpis.clientsClosed} accent="positive" />
         <KpiCard label="Close Rate" value={formatPercent(kpis.closeRate)} accent="positive" />
         <KpiCard label="CPA" value={formatCurrency(kpis.cpa)} />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Link href="/dashboard/appointments?type=demo&status=noshow" className="contents">
+          <div className="cursor-pointer hover:opacity-90"><KpiCard label="Demo No-Show →" value={demoNoShow} accent="negative" /></div>
+        </Link>
+        <Link href="/dashboard/appointments?type=demo&status=cancelled" className="contents">
+          <div className="cursor-pointer hover:opacity-90"><KpiCard label="Demo Cancelled →" value={demoCancelled} accent="negative" /></div>
+        </Link>
+        <KpiCard label="Demos Showed" value={kpis.demosShowed} accent="positive" />
       </div>
 
       {/* Row 4: Revenue */}

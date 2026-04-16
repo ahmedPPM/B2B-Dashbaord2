@@ -15,7 +15,7 @@ export async function GET() {
   const { data: leads } = leadIds.length
     ? await supa
         .from('leads')
-        .select('id, lead_name, email, phone, assigned_user_name, campaign_name, pipeline_stage, intro_closer, demo_assigned_closer, date_opted_in')
+        .select('id, ghl_contact_id, lead_name, email, phone, assigned_user_name, campaign_name, pipeline_stage, intro_closer, demo_assigned_closer, date_opted_in')
         .in('id', leadIds)
         .is('deleted_at', null)
     : { data: [] };

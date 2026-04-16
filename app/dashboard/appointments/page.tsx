@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { Search, ArrowUp, ArrowDown, Calendar, UserCheck, UserX, Ban, Clock } from 'lucide-react';
 import { useAdsOnly } from '@/lib/ads-only-context';
@@ -57,10 +58,15 @@ const RANGES: Array<{ label: string; from: () => string; to: () => string }> = [
 ];
 
 export default function AppointmentsPage() {
+  const searchParams = useSearchParams();
   const [rangeIdx, setRangeIdx] = useState(4);
-  const [typeFilter, setTypeFilter] = useState<'all' | 'intro' | 'demo'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'showed' | 'noshow' | 'cancelled' | 'scheduled'>('all');
-  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'intro' | 'demo'>(
+    (searchParams.get('type') as 'intro' | 'demo') || 'all',
+  );
+  const [statusFilter, setStatusFilter] = useState<'all' | 'showed' | 'noshow' | 'cancelled' | 'scheduled'>(
+    (searchParams.get('status') as 'showed' | 'noshow' | 'cancelled' | 'scheduled') || 'all',
+  );
+  const [searchText, setSearchText] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignBreak[]>([]);
@@ -85,7 +91,7 @@ export default function AppointmentsPage() {
   }, [rangeIdx]);
 
   const sortedFiltered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = searchText.trim().toLowerCase();
     let out = rows.filter((r) => {
       if (adsOnly && !isFromAds(r)) return false;
       if (typeFilter !== 'all' && r.type !== typeFilter) return false;
@@ -114,7 +120,7 @@ export default function AppointmentsPage() {
       return sortDir === 'asc' ? as.localeCompare(bs) : bs.localeCompare(as);
     });
     return out;
-  }, [rows, search, typeFilter, statusFilter, sortKey, sortDir, adsOnly]);
+  }, [rows, searchText, typeFilter, statusFilter, sortKey, sortDir, adsOnly]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -198,8 +204,8 @@ export default function AppointmentsPage() {
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
           <input
             type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
             placeholder="Search name, email, closer, campaign…"
             className="input w-full pl-9"
           />

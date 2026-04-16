@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { CallAnalysis } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
-import { Search, Phone, Play, Sparkles, User, Mic, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Search, Phone, Play, Sparkles, User, Mic, ChevronDown, ChevronRight, Loader2, ExternalLink } from 'lucide-react';
 import { useAdsOnly } from '@/lib/ads-only-context';
 import { isFromAds } from '@/lib/is-paid';
 
 interface LeadWithCalls {
   id: string;
+  ghl_contact_id?: string | null;
   lead_name: string | null;
   email: string | null;
   phone: string | null;
@@ -179,6 +180,11 @@ export default function CallsPage() {
 
 function LeadCallsView({ lead, onAnalyze, analyzing }: { lead: LeadWithCalls; onAnalyze: () => void; analyzing: boolean }) {
   const unanalyzed = lead.calls.filter((c) => !c.ai_summary && c.raw_transcript).length;
+  const locId = process.env.NEXT_PUBLIC_GHL_LOCATION_ID;
+  const ghlUrl =
+    locId && lead.ghl_contact_id
+      ? `https://app.gohighlevel.com/v2/location/${locId}/contacts/detail/${lead.ghl_contact_id}`
+      : null;
 
   return (
     <div className="space-y-4">
@@ -193,6 +199,14 @@ function LeadCallsView({ lead, onAnalyze, analyzing }: { lead: LeadWithCalls; on
             {lead.email && <span>{lead.email}</span>}
             {lead.assigned_user_name && <><span>•</span><span className="inline-flex items-center gap-1"><User className="w-3 h-3" />{lead.assigned_user_name}</span></>}
             {lead.campaign_name && <><span>•</span><span>{lead.campaign_name}</span></>}
+            {ghlUrl && (
+              <>
+                <span>•</span>
+                <a href={ghlUrl} target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1">
+                  <ExternalLink className="w-3 h-3" /> Open in GHL
+                </a>
+              </>
+            )}
           </div>
         </div>
         {unanalyzed > 0 && (

@@ -2,11 +2,16 @@ import type { CallAnalysis } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
 import {
   FileText, Lightbulb, TrendingUp, AlertTriangle,
-  UserCheck, ArrowRight, Star, Phone,
+  UserCheck, ArrowRight, Star, Phone, ExternalLink,
 } from 'lucide-react';
 
 export function CallAnalysisCard({ analysis }: { analysis: CallAnalysis }) {
   const pending = !analysis.analyzed_at;
+  const locId = process.env.NEXT_PUBLIC_GHL_LOCATION_ID;
+  const ghlUrl =
+    locId && analysis.ghl_contact_id
+      ? `https://app.gohighlevel.com/v2/location/${locId}/contacts/detail/${analysis.ghl_contact_id}`
+      : null;
 
   return (
     <div className="card p-5 space-y-4">
@@ -16,12 +21,24 @@ export function CallAnalysisCard({ analysis }: { analysis: CallAnalysis }) {
           <span className="text-sm font-medium capitalize">{analysis.call_type} Call</span>
           <span className="text-xs text-zinc-500">· {formatDate(analysis.call_date)}</span>
         </div>
-        {analysis.ai_call_quality_score && (
-          <div className="flex items-center gap-1 text-amber-400">
-            <Star className="w-4 h-4 fill-current" />
-            <span className="text-sm font-medium">{analysis.ai_call_quality_score}/10</span>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {ghlUrl && (
+            <a
+              href={ghlUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1"
+            >
+              <ExternalLink className="w-3 h-3" /> View in GHL
+            </a>
+          )}
+          {analysis.ai_call_quality_score && (
+            <div className="flex items-center gap-1 text-amber-400">
+              <Star className="w-4 h-4 fill-current" />
+              <span className="text-sm font-medium">{analysis.ai_call_quality_score}/10</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {pending ? (
