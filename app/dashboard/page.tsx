@@ -146,6 +146,22 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <Filters value={filters} onChange={setFilters} closers={closers} campaigns={campaigns} stages={stages} />
 
+      {/* Hyros-parity row — ordered to match how Hyros displays for quick cross-check */}
+      <div className="card p-4">
+        <div className="text-xs uppercase tracking-wider text-zinc-500 mb-3">Hyros cross-check</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <KpiCard label="CPL" value={formatCurrency(kpis.cpl)} />
+          <KpiCard label="Intros" value={kpis.introsCreated} />
+          <KpiCard label="Cost / Intro" value={formatCurrency(kpis.costPerIntro)} />
+          <KpiCard label="Lead → Intro %" value={formatPercent(kpis.leadToIntroPct)} />
+          <KpiCard label="Demos" value={kpis.demosCreated} />
+          <KpiCard label="Cost / Demo" value={formatCurrency(kpis.costPerDemo)} />
+          <KpiCard label="Cost / Shown Intro" value={formatCurrency(kpis.costPerShownIntro)} />
+          <KpiCard label="Cost / Shown Demo" value={formatCurrency(kpis.costPerShownDemo)} />
+          <KpiCard label="Intro → Demo %" value={formatPercent(kpis.introToDemoPct)} />
+        </div>
+      </div>
+
       {/* Row 1: Spend / Leads / CPL / Score mix */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard label="Total Spend" value={formatCurrency(kpis.totalSpend)} />
