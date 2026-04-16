@@ -44,7 +44,41 @@ export function LeadTable({ leads }: { leads: Lead[] }) {
 
   return (
     <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* Mobile cards */}
+      <div className="md:hidden divide-y divide-zinc-800/50">
+        {sorted.map((l) => (
+          <Link
+            key={l.id}
+            href={`/dashboard/leads/${l.id}`}
+            className="block p-4 hover:bg-zinc-900/40"
+          >
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <div className="min-w-0">
+                <div className="text-zinc-100 font-medium truncate">{l.lead_name || '—'}</div>
+                <div className="text-xs text-zinc-500 truncate">{l.email || '—'}</div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <ScoreBadge score={l.app_grading} />
+                <StagePill stage={l.pipeline_stage} name={(l as Lead & { stage_name?: string }).stage_name} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-y-1 gap-x-3 text-xs text-zinc-400">
+              <div><span className="text-zinc-600">Created:</span> {formatDate(l.date_opted_in)}</div>
+              <div><span className="text-zinc-600">Closer:</span> {l.assigned_user_name || l.demo_assigned_closer || l.intro_closer || '—'}</div>
+              <div><span className="text-zinc-600">Intro:</span> {l.intro_show_status || '—'}</div>
+              <div><span className="text-zinc-600">Demo:</span> {l.demo_show_status || '—'}</div>
+              <div><span className="text-zinc-600">Cash:</span> <span className="text-zinc-200">{formatCurrency(l.cash_collected)}</span></div>
+              <div><span className="text-zinc-600">MRR:</span> <span className="text-zinc-200">{formatCurrency(l.contracted_mrr)}</span></div>
+              <div className="col-span-2 truncate"><span className="text-zinc-600">Source:</span> {l.campaign_name || l.lead_source || '—'}</div>
+            </div>
+            {l.client_closed && <div className="mt-2 text-xs text-emerald-400">✓ Closed</div>}
+          </Link>
+        ))}
+        {sorted.length === 0 && <div className="p-6 text-center text-zinc-500 text-sm">No leads match filters.</div>}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-zinc-900/60 border-b border-zinc-800">
             <tr>
