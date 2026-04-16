@@ -135,6 +135,35 @@ export class GHLClient {
     return this.request(`/contacts/${id}`);
   }
 
+  /**
+   * Search contacts by a free-form text query (used to discover ads-attributed
+   * contacts independently of tagging). Matches name/email/phone/custom fields.
+   */
+  async searchContacts(params: {
+    query?: string;
+    startAfterDate?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ contacts: GHLContact[]; total?: number }> {
+    const body: Record<string, unknown> = {
+      locationId: this.locationId,
+      page: params.page ?? 1,
+      pageLimit: params.limit ?? 100,
+    };
+    if (params.query) body.query = params.query;
+    if (params.startAfterDate) {
+      body.filters = [{
+        field: 'dateAdded',
+        operator: 'range',
+        value: { gte: params.startAfterDate },
+      }];
+    }
+    return this.request(`/contacts/search`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   async getOpportunityByContact(contactId: string): Promise<{ opportunities: GHLOpportunity[] }> {
     // Do NOT filter by pipeline_id — leads can live on any pipeline (B2B setting,
     // deals, etc.). We want whichever opportunity exists for this contact.
