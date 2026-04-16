@@ -90,6 +90,10 @@ export default function ClientsPage() {
         <p className="text-sm text-zinc-500">All closed clients — split by ad-sourced vs organic.</p>
       </div>
 
+      <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3 text-xs text-amber-300">
+        ⚠️ This section is still being built — numbers and data may change.
+      </div>
+
       {totals && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Kpi icon={Users} label="Total Clients" value={totals.all} sub={`${totals.from_ads} ads • ${totals.organic} organic`} />
