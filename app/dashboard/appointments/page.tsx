@@ -45,12 +45,14 @@ interface CampaignBreak {
 
 type SortKey = 'booked_for' | 'lead_name' | 'type' | 'status' | 'closer' | 'campaign_name';
 
+// Appointments can be upcoming, so `to` extends into the future for period
+// presets; the older "7d/30d" ranges stay bounded to today for past-only views.
 const RANGES: Array<{ label: string; from: () => string; to: () => string }> = [
   { label: 'Upcoming', from: () => today(), to: () => '2030-12-31' },
   { label: 'Last 7d', from: () => isoDaysAgo(7), to: () => today() },
   { label: 'Last 30d', from: () => isoDaysAgo(30), to: () => today() },
-  { label: 'MTD', from: () => monthStart(), to: () => today() },
-  { label: 'YTD', from: () => '2026-01-01', to: () => today() },
+  { label: 'MTD', from: () => monthStart(), to: () => '2030-12-31' },
+  { label: 'YTD', from: () => '2026-01-01', to: () => '2030-12-31' },
   { label: 'All', from: () => '2020-01-01', to: () => '2030-12-31' },
 ];
 
