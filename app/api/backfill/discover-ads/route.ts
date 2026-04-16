@@ -20,7 +20,11 @@ export async function POST(req: Request) {
   if (denied) return denied;
 
   const supa = supabaseAdmin();
-  const startDate = process.env.BACKFILL_START_DATE || '2026-01-01';
+  // Widen the net: GHL re-uses the same contact ID when a lead re-engages,
+  // so dateAdded can be years old even if they opted in again this month.
+  // Go back 2 years; the repair step downstream fixes the opt-in date using
+  // the first 2026 appointment or call.
+  const startDate = process.env.BACKFILL_DISCOVER_START_DATE || '2024-01-01';
   const dryRun = new URL(req.url).searchParams.get('dry') === 'true';
 
   // Existing contact IDs so we don't re-insert
