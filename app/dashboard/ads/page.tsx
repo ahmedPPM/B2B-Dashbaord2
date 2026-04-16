@@ -105,9 +105,9 @@ export default function AdsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-xl font-semibold">Ads Performance</h2>
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
           {RANGES.map((r, i) => (
             <button
               key={r.label}
@@ -159,7 +159,7 @@ export default function AdsPage() {
       <div className="card overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between gap-4">
           <h3 className="text-sm font-medium text-zinc-300">By Campaign</h3>
-          <div className="relative w-64">
+          <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
             <input
               type="search"

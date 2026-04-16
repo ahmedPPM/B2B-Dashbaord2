@@ -78,7 +78,7 @@ export default function ActivityPage() {
               </button>
             ))}
           </div>
-          <div className="relative w-64">
+          <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
             <input
               type="search"

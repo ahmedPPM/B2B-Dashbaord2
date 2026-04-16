@@ -114,7 +114,7 @@ export default function ClientsPage() {
             </button>
           ))}
         </div>
-        <div className="relative w-72">
+        <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
           <input
             type="search"
