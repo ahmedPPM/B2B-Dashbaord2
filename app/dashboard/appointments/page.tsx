@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { formatDate, formatCurrency } from '@/lib/utils';
@@ -58,6 +58,14 @@ const RANGES: Array<{ label: string; from: () => string; to: () => string }> = [
 ];
 
 export default function AppointmentsPage() {
+  return (
+    <Suspense fallback={<div className="text-zinc-500">Loading...</div>}>
+      <AppointmentsInner />
+    </Suspense>
+  );
+}
+
+function AppointmentsInner() {
   const searchParams = useSearchParams();
   const [rangeIdx, setRangeIdx] = useState(4);
   const [typeFilter, setTypeFilter] = useState<'all' | 'intro' | 'demo'>(
