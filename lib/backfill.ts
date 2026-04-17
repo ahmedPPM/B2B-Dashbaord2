@@ -286,12 +286,19 @@ export async function upsertAppointmentsForLead(
       patch.intro_created_date = (intro.dateAdded as string) || intro.startTime || null;
       patch.intro_booked_for_date = intro.startTime || null;
       patch.intro_show_status = intro.appointmentStatus || null;
+      // Auto-set intro_closer from the appointment's assigned user
+      if ((intro as Record<string, unknown>).assignedUserId) {
+        patch.intro_closer = (intro as Record<string, unknown>).assignedUserId as string;
+      }
     }
     if (demo) {
       patch.demo_booked = true;
       patch.demo_created_date = (demo.dateAdded as string) || demo.startTime || null;
       patch.demo_booked_for_date = demo.startTime || null;
       patch.demo_show_status = demo.appointmentStatus || null;
+      if ((demo as Record<string, unknown>).assignedUserId) {
+        patch.demo_assigned_closer = (demo as Record<string, unknown>).assignedUserId as string;
+      }
     }
     if (Object.keys(patch).length) {
       await supabaseAdmin().from('leads').update(patch).eq('id', leadId);

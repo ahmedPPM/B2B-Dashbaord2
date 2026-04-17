@@ -129,6 +129,7 @@ async function handleEvent(payload: Record<string, unknown>) {
       status?: string;
       appointmentStatus?: string;
       calendarId?: string;
+      assignedUserId?: string;
     };
     if (!p.contactId) return;
     const { data: lead } = await supa.from('leads').select('id').eq('ghl_contact_id', p.contactId).maybeSingle();
@@ -147,12 +148,14 @@ async function handleEvent(payload: Record<string, unknown>) {
             demo_booked_for_date: p.startTime || null,
             demo_created_date: new Date().toISOString(),
             demo_show_status: showStatus,
+            ...(p.assignedUserId ? { demo_assigned_closer: p.assignedUserId } : {}),
           }
         : {
             intro_booked: true,
             intro_booked_for_date: p.startTime || null,
             intro_created_date: new Date().toISOString(),
             intro_show_status: showStatus,
+            ...(p.assignedUserId ? { intro_closer: p.assignedUserId } : {}),
           };
     await supa.from('leads').update(patch).eq('id', lead.id);
     return;
