@@ -13,19 +13,23 @@ import { formatCurrency, formatPercent } from '@/lib/utils';
 import Link from 'next/link';
 import { Table, List } from 'lucide-react';
 
-const MONTH_INDEX: Record<string, number> = {
-  'Jan 2026':0,'Feb 2026':1,'Mar 2026':2,'Apr 2026':3,'May 2026':4,'Jun 2026':5,
-  'Jul 2026':6,'Aug 2026':7,'Sep 2026':8,'Oct 2026':9,'Nov 2026':10,'Dec 2026':11,
-};
+function today() { return new Date().toISOString().slice(0, 10); }
+function daysAgo(n: number) { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10); }
+function monthStart() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; }
 
-function monthRange(label: string) {
-  if (label === 'All 2026') {
-    return { from: new Date(Date.UTC(2026, 0, 1)), to: new Date(Date.UTC(2026, 11, 31, 23, 59, 59)) };
-  }
-  const m = MONTH_INDEX[label] ?? 0;
+const DATE_RANGES = [
+  { label: 'Last 7d', from: () => daysAgo(7), to: () => today() },
+  { label: 'Last 30d', from: () => daysAgo(30), to: () => today() },
+  { label: 'MTD', from: () => monthStart(), to: () => today() },
+  { label: 'YTD', from: () => '2026-01-01', to: () => today() },
+  { label: 'All', from: () => '2020-01-01', to: () => '2030-12-31' },
+];
+
+function dateRange(idx: number) {
+  const r = DATE_RANGES[idx] || DATE_RANGES[3];
   return {
-    from: new Date(Date.UTC(2026, m, 1)),
-    to: new Date(Date.UTC(2026, m + 1, 0, 23, 59, 59)),
+    from: new Date(r.from() + 'T00:00:00Z'),
+    to: new Date(r.to() + 'T23:59:59Z'),
   };
 }
 
@@ -33,6 +37,7 @@ export default function DashboardPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [spend, setSpend] = useState<WindsorRow[]>([]);
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
+  const [rangeIdx, setRangeIdx] = useState(2); // default MTD
   const [view, setView] = useState<'summary' | 'leads'>('leads');
   const [loaded, setLoaded] = useState(false);
   const { adsOnly } = useAdsOnly();
@@ -79,7 +84,7 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const range = useMemo(() => monthRange(filters.month), [filters.month]);
+  const range = useMemo(() => dateRange(rangeIdx), [rangeIdx]);
 
   const filtered = useMemo(() => {
     const matchStatus = (val: string | null | undefined, pick: string) => {
@@ -160,7 +165,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <Filters value={filters} onChange={setFilters} closers={closers} campaigns={campaigns} stages={stages} />
+      <Filters value={filters} onChange={setFilters} rangeIdx={rangeIdx} onRangeChange={setRangeIdx} closers={closers} campaigns={campaigns} stages={stages} />
 
       {/* Hyros-parity row — ordered to match how Hyros displays for quick cross-check */}
       <div className="card p-4">

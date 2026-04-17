@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { SlidersHorizontal, X } from 'lucide-react';
 
 export interface FilterState {
-  month: string;
   score: string;
   stage: string;
   introStatus: string;
@@ -14,26 +13,37 @@ export interface FilterState {
   campaign: string;
 }
 
-const MONTHS = [
-  'All 2026',
-  'Jan 2026','Feb 2026','Mar 2026','Apr 2026','May 2026','Jun 2026',
-  'Jul 2026','Aug 2026','Sep 2026','Oct 2026','Nov 2026','Dec 2026',
-];
+const RANGE_LABELS = ['Last 7d', 'Last 30d', 'MTD', 'YTD', 'All'];
 
 interface Props {
   value: FilterState;
   onChange: (v: FilterState) => void;
+  rangeIdx: number;
+  onRangeChange: (i: number) => void;
   closers: string[];
   campaigns: string[];
   stages?: string[];
 }
 
-export function Filters({ value, onChange, closers, campaigns, stages }: Props) {
+export function Filters({ value, onChange, rangeIdx, onRangeChange, closers, campaigns, stages }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const activeCount = [value.score, value.stage, value.introStatus, value.demoStatus, value.closed, value.closer, value.campaign].filter(Boolean).length;
 
   return (
-    <div className="mb-4">
+    <div className="mb-4 space-y-3">
+      {/* Date range buttons */}
+      <div className="flex gap-1 flex-wrap">
+        {RANGE_LABELS.map((label, i) => (
+          <button
+            key={label}
+            onClick={() => onRangeChange(i)}
+            className={`px-3 py-2 text-xs rounded min-h-[40px] ${i === rangeIdx ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Mobile trigger */}
       <div className="md:hidden">
         <button
@@ -42,7 +52,7 @@ export function Filters({ value, onChange, closers, campaigns, stages }: Props) 
         >
           <span className="inline-flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4" />
-            Filters — {value.month}
+            Filters
             {activeCount > 0 && (
               <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-emerald-600/30 text-emerald-300">
                 {activeCount}
@@ -82,7 +92,7 @@ export function Filters({ value, onChange, closers, campaigns, stages }: Props) 
 
       {/* Desktop grid */}
       <div className="hidden md:block card p-3">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
           <FilterInputs value={value} onChange={onChange} closers={closers} campaigns={campaigns} stages={stages} />
         </div>
       </div>
@@ -92,17 +102,13 @@ export function Filters({ value, onChange, closers, campaigns, stages }: Props) 
 
 function FilterInputs({
   value, onChange, closers, campaigns, stages, stacked,
-}: Props & { stacked?: boolean }) {
+}: Omit<Props, 'rangeIdx' | 'onRangeChange'> & { stacked?: boolean }) {
   const set = <K extends keyof FilterState>(k: K, v: FilterState[K]) =>
     onChange({ ...value, [k]: v });
   const cls = stacked ? 'input w-full' : 'input';
 
   return (
     <>
-      <select className={cls} value={value.month} onChange={(e) => set('month', e.target.value)}>
-        {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-      </select>
-
       <select className={cls} value={value.score} onChange={(e) => set('score', e.target.value)}>
         <option value="">All scores</option>
         <option value="4">4 — Hot</option>
@@ -154,7 +160,6 @@ function FilterInputs({
 }
 
 export const defaultFilters: FilterState = {
-  month: 'All 2026',
   score: '',
   stage: '',
   introStatus: '',
