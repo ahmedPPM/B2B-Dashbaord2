@@ -64,5 +64,41 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, synced, skipped, errors });
+  // Merge Hyros attribution back to leads where GHL attribution is missing.
+  // If a lead has no campaign_name/lead_source but Hyros says is_paid_ad,
+  // backfill from Hyros so the lead shows in "Ads only" views.
+  let enriched = 0;
+  try {
+    const { data: gaps } = await supa
+      .from('leads')
+      .select('id, email')
+      .is('campaign_name', null)
+      .is('deleted_at', null)
+      .not('email', 'is', null);
+
+    for (const lead of gaps || []) {
+      const email = (lead.email || '').toLowerCase();
+      const { data: hyros } = await supa
+        .from('hyros_attribution')
+        .select('is_paid_ad, ad_platform, ad_name, traffic_source')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (hyros?.is_paid_ad) {
+        const patch: Record<string, unknown> = {};
+        if (hyros.ad_platform) patch.lead_source = hyros.ad_platform;
+        else if (hyros.traffic_source) patch.lead_source = hyros.traffic_source;
+        else patch.lead_source = 'Paid (Hyros)';
+        if (hyros.ad_name) patch.ad_name = hyros.ad_name;
+        if (Object.keys(patch).length) {
+          await supa.from('leads').update(patch).eq('id', lead.id);
+          enriched++;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('hyros→leads merge', e);
+  }
+
+  return NextResponse.json({ ok: true, synced, skipped, enriched, errors });
 }
