@@ -80,33 +80,77 @@ export function determineCallType(
   return 'other';
 }
 
+// GHL user IDs are 24-char hex-ish strings (objectId-like).
+// Use this to detect "unresolved" values in name columns.
+const looksLikeGhlUserId = (v: unknown): v is string =>
+  typeof v === 'string' && /^[A-Za-z0-9]{20,30}$/.test(v);
+
+let userMapCache: { at: number; map: Record<string, string> } | null = null;
+async function getGhlUsersMap(): Promise<Record<string, string>> {
+  // 10-minute cache so the webhook isn't hammering /users
+  if (userMapCache && Date.now() - userMapCache.at < 10 * 60 * 1000) return userMapCache.map;
+  const map: Record<string, string> = {};
+  const { users } = await ghl.getUsers();
+  for (const u of users || []) {
+    const name = u.name || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || u.id;
+    map[u.id] = name;
+  }
+  userMapCache = { at: Date.now(), map };
+  return map;
+}
+
+// Exported helper: resolve one user ID to its display name (cached).
+export async function resolveGhlUserName(userId: string | null | undefined): Promise<string | null> {
+  if (!userId) return null;
+  if (!looksLikeGhlUserId(userId)) return userId; // already a name
+  try {
+    const map = await getGhlUsersMap();
+    return map[userId] || userId;
+  } catch {
+    return userId;
+  }
+}
+
 /**
- * Resolve `assigned_user_id` → `assigned_user_name` for all leads by pulling
- * GHL users once and mapping IDs to display names.
+ * Resolve GHL user IDs → display names across lead columns:
+ *   - assigned_user_id → assigned_user_name
+ *   - intro_closer (overwritten in place if it's a raw ID)
+ *   - demo_assigned_closer (overwritten in place if it's a raw ID)
  */
 export async function resolveAssignedUserNames(): Promise<number> {
   const supa = supabaseAdmin();
-  let usersMap: Record<string, string> = {};
+  let usersMap: Record<string, string>;
   try {
-    const { users } = await ghl.getUsers();
-    for (const u of users || []) {
-      const name = u.name || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || u.id;
-      usersMap[u.id] = name;
-    }
+    usersMap = await getGhlUsersMap();
   } catch (e) {
     console.error('resolveAssignedUserNames: getUsers failed', e);
     return 0;
   }
+
   const { data: leads } = await supa
     .from('leads')
-    .select('id, assigned_user_id, assigned_user_name')
-    .not('assigned_user_id', 'is', null);
+    .select('id, assigned_user_id, assigned_user_name, intro_closer, demo_assigned_closer');
+
   let updated = 0;
   for (const l of leads || []) {
-    const name = usersMap[l.assigned_user_id as string];
-    if (!name || name === l.assigned_user_name) continue;
-    await supa.from('leads').update({ assigned_user_name: name }).eq('id', l.id);
-    updated++;
+    const patch: Record<string, string | null> = {};
+
+    const aName = usersMap[l.assigned_user_id as string];
+    if (aName && aName !== l.assigned_user_name) patch.assigned_user_name = aName;
+
+    if (looksLikeGhlUserId(l.intro_closer)) {
+      const n = usersMap[l.intro_closer as string];
+      if (n) patch.intro_closer = n;
+    }
+    if (looksLikeGhlUserId(l.demo_assigned_closer)) {
+      const n = usersMap[l.demo_assigned_closer as string];
+      if (n) patch.demo_assigned_closer = n;
+    }
+
+    if (Object.keys(patch).length) {
+      await supa.from('leads').update(patch).eq('id', l.id);
+      updated++;
+    }
   }
   return updated;
 }
@@ -286,19 +330,16 @@ export async function upsertAppointmentsForLead(
       patch.intro_created_date = (intro.dateAdded as string) || intro.startTime || null;
       patch.intro_booked_for_date = intro.startTime || null;
       patch.intro_show_status = intro.appointmentStatus || null;
-      // Auto-set intro_closer from the appointment's assigned user
-      if ((intro as Record<string, unknown>).assignedUserId) {
-        patch.intro_closer = (intro as Record<string, unknown>).assignedUserId as string;
-      }
+      const uid = (intro as Record<string, unknown>).assignedUserId as string | undefined;
+      if (uid) patch.intro_closer = (await resolveGhlUserName(uid)) || uid;
     }
     if (demo) {
       patch.demo_booked = true;
       patch.demo_created_date = (demo.dateAdded as string) || demo.startTime || null;
       patch.demo_booked_for_date = demo.startTime || null;
       patch.demo_show_status = demo.appointmentStatus || null;
-      if ((demo as Record<string, unknown>).assignedUserId) {
-        patch.demo_assigned_closer = (demo as Record<string, unknown>).assignedUserId as string;
-      }
+      const uid = (demo as Record<string, unknown>).assignedUserId as string | undefined;
+      if (uid) patch.demo_assigned_closer = (await resolveGhlUserName(uid)) || uid;
     }
     if (Object.keys(patch).length) {
       await supabaseAdmin().from('leads').update(patch).eq('id', leadId);

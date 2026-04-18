@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { calculateLeadScore } from '@/lib/scoring';
+import { resolveGhlUserName } from '@/lib/backfill';
 import type { GHLContact } from '@/lib/ghl';
 
 function verifySignature(body: string, signature: string | null): boolean {
@@ -53,8 +54,14 @@ async function handleEvent(payload: Record<string, unknown>) {
   const type = (payload.type || payload.event) as string | undefined;
   const supa = supabaseAdmin();
 
-  if (type === 'ContactCreate' || type === 'ContactUpdate') {
-    const contact = (payload.contact || payload) as GHLContact;
+  // GHL workflow webhooks often omit `type` and send the raw contact JSON.
+  // Treat an untyped payload with a contact-shaped body as ContactUpdate.
+  const rawContact = (payload.contact || payload) as Partial<GHLContact>;
+  const looksLikeContact = !!rawContact?.id && (rawContact.email || rawContact.phone || rawContact.firstName || rawContact.lastName || rawContact.name);
+  const isContactEvent = type === 'ContactCreate' || type === 'ContactUpdate' || (!type && looksLikeContact);
+
+  if (isContactEvent) {
+    const contact = rawContact as GHLContact;
     if (!contact?.id) return;
     const score = calculateLeadScore(contact);
     const name = contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(' ') || null;
@@ -133,6 +140,8 @@ async function handleEvent(payload: Record<string, unknown>) {
     else if (/demo/i.test(p.title || '')) kind = 'demo';
     else kind = 'intro';
     const showStatus = p.appointmentStatus || p.status || null;
+    // Resolve GHL user ID → display name at write time so the UI never shows a raw ID.
+    const closerName = p.assignedUserId ? await resolveGhlUserName(p.assignedUserId) : null;
     const patch =
       kind === 'demo'
         ? {
@@ -140,14 +149,14 @@ async function handleEvent(payload: Record<string, unknown>) {
             demo_booked_for_date: p.startTime || null,
             demo_created_date: new Date().toISOString(),
             demo_show_status: showStatus,
-            ...(p.assignedUserId ? { demo_assigned_closer: p.assignedUserId } : {}),
+            ...(closerName ? { demo_assigned_closer: closerName } : {}),
           }
         : {
             intro_booked: true,
             intro_booked_for_date: p.startTime || null,
             intro_created_date: new Date().toISOString(),
             intro_show_status: showStatus,
-            ...(p.assignedUserId ? { intro_closer: p.assignedUserId } : {}),
+            ...(closerName ? { intro_closer: closerName } : {}),
           };
     await supa.from('leads').update(patch).eq('id', lead.id);
     return;
