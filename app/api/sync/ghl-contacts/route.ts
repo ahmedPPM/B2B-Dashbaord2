@@ -17,11 +17,12 @@ export async function GET(req: Request) {
   let upserted = 0;
 
   try {
-    // Still scan tagged contacts (fast path) AND the untagged date window (catch-all).
+    // `new_lead` is the live tag for current opt-ins (fast path).
+    // The untagged pass catches stragglers + non-form contacts (inbound call/SMS).
+    // `b2b typeform optin` was backfill-only — no longer needed on live cron.
     const queries: Array<Parameters<typeof ghl.getContacts>[0]> = [
-      { tags: ['b2b typeform optin'], startAfterDate: since, limit: 100 },
-      { tags: ['new_lead'], startAfterDate: since, limit: 100 },
-      { startAfterDate: since, limit: 100 },
+      { tags: ['new_lead'], startAfterDate: since, limit: 200 },
+      { startAfterDate: since, limit: 200 },
     ];
     for (const q of queries) {
       const { contacts } = await ghl.getContacts(q);
