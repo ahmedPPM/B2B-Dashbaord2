@@ -14,9 +14,13 @@ hit() {
   echo
 }
 
-# Every fire: GHL contacts (quick) + call transcripts (quick-ish)
+# Every fire: GHL contacts (quick) + call transcripts (quick-ish) + enrichment sweep
 hit "/api/sync/ghl-contacts"
 hit "/api/sync/call-transcripts?manual=1"
+# Per-lead GHL sync: opportunities (pipeline_stage, client_closed),
+# appointments (intro/demo + closer names), custom fields (cash_collected,
+# contracted_mrr). Up to 5 min.
+hit "/api/sync/enrich"
 
 # Daily-only jobs (only when it's 6 UTC hour)
 HOUR=$(date -u +%H)

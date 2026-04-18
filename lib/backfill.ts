@@ -262,21 +262,114 @@ export async function reclassifyCallTypesForLeads(): Promise<{ intro: number; de
 }
 
 async function upsertOpportunity(contactId: string, leadId: string) {
+  // NOTE: cash_collected + contracted_mrr come from GHL CONTACT custom fields
+  //  (not opportunity.monetaryValue). See enrichLeadFromGhl().
+  // This function only syncs pipeline_stage + closed-won flags from the latest opportunity.
   try {
     const { opportunities } = await ghl.getOpportunityByContact(contactId);
-    const supa = supabaseAdmin();
-    for (const opp of opportunities || []) {
-      await supa
-        .from('leads')
-        .update({
-          pipeline_stage: opp.pipelineStageId || null,
-          cash_collected: opp.monetaryValue || 0,
-        })
-        .eq('id', leadId);
+    if (!opportunities?.length) return;
+    // Use the most recently updated opportunity for stage + status
+    const sorted = opportunities.slice().sort(
+      (a, b) => new Date((b as Record<string, string>).updatedAt || (b as Record<string, string>).createdAt || 0).getTime()
+             - new Date((a as Record<string, string>).updatedAt || (a as Record<string, string>).createdAt || 0).getTime()
+    );
+    const latest = sorted[0];
+    const patch: Record<string, unknown> = {};
+    if (latest.pipelineStageId) patch.pipeline_stage = latest.pipelineStageId;
+    if (latest.status === 'won') {
+      patch.client_closed = true;
+      const when = (latest as Record<string, string>).updatedAt || (latest as Record<string, string>).createdAt;
+      if (when) patch.client_closed_date = when;
+    }
+    if (Object.keys(patch).length) {
+      await supabaseAdmin().from('leads').update(patch).eq('id', leadId);
     }
   } catch (e) {
     console.error('upsertOpportunity', contactId, e);
   }
+}
+
+// GHL custom field IDs for revenue tracking.
+// Keys map to the `{{ contact.X }}` merge tokens used in GHL templates.
+const CF_IDS = {
+  cash_collected: 'wAEqpt1dcDftV2HqCGvA',      // contact.cash_collected (MONETORY)
+  three_month_payment: 'tV6DGPGXgVTFiYle9RoQ', // contact.3_month_payment — new offer
+  total_contract_revenue: 'OvIIizAHQW9aaciDuLaA', // contact.total_contract_revenue — old offer
+};
+
+function pickNumericCustomField(contact: GHLContact, cfId: string): number | null {
+  const f = (contact.customFields || []).find((x) => x.id === cfId);
+  if (!f) return null;
+  const n = Number(f.value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Enrich a single lead from GHL: custom fields + opportunities + appointments.
+ * Idempotent — safe to call repeatedly on the same lead.
+ *
+ * - cash_collected   ← contact.cash_collected
+ * - contracted_mrr   ← contact.3_month_payment  (prefer new offer)
+ *                   OR contact.total_contract_revenue  (fallback old offer)
+ * - pipeline_stage   ← latest opportunity.pipelineStageId
+ * - client_closed    ← latest opportunity.status === 'won'
+ * - intro/demo fields + closer names ← from appointments
+ */
+export async function enrichLeadFromGhl(contactId: string, leadId: string): Promise<void> {
+  // Custom fields
+  try {
+    const { contact } = await ghl.getContact(contactId);
+    if (contact?.customFields) {
+      const cash = pickNumericCustomField(contact, CF_IDS.cash_collected);
+      const tm = pickNumericCustomField(contact, CF_IDS.three_month_payment);
+      const tcr = pickNumericCustomField(contact, CF_IDS.total_contract_revenue);
+      // Prefer new-offer 3_month_payment over old-offer total_contract_revenue
+      const mrr = tm ?? tcr;
+      const patch: Record<string, unknown> = {};
+      if (cash !== null) patch.cash_collected = cash;
+      if (mrr !== null) patch.contracted_mrr = mrr;
+      if (Object.keys(patch).length) {
+        await supabaseAdmin().from('leads').update(patch).eq('id', leadId);
+      }
+    }
+  } catch (e) {
+    console.error('enrich custom fields', contactId, e);
+  }
+
+  // Opportunity (pipeline_stage + won)
+  await upsertOpportunity(contactId, leadId);
+
+  // Appointments (intro/demo + resolved closer names)
+  try {
+    const appts = await fetchAllAppointmentsForContact(contactId);
+    if (appts.length) await upsertAppointmentsForLead(contactId, leadId, appts);
+  } catch (e) {
+    console.error('enrich appointments', contactId, e);
+  }
+}
+
+/**
+ * Enrich every lead with a GHL contact id. Returns per-field update counts.
+ * Intended to be called hourly from cron.
+ */
+export async function enrichAllLeads(limitPerBatch = 500): Promise<{ touched: number; total: number }> {
+  const supa = supabaseAdmin();
+  const { data: rows } = await supa
+    .from('leads')
+    .select('id, ghl_contact_id')
+    .not('ghl_contact_id', 'is', null)
+    .limit(limitPerBatch);
+  let touched = 0;
+  for (const r of rows || []) {
+    try {
+      await enrichLeadFromGhl(r.ghl_contact_id as string, r.id as string);
+      touched++;
+      await ghl.sleep(80);
+    } catch (e) {
+      console.error('enrichAllLeads row', r.ghl_contact_id, e);
+    }
+  }
+  return { touched, total: (rows || []).length };
 }
 
 async function fetchAllAppointmentsForContact(contactId: string): Promise<GHLAppointment[]> {
