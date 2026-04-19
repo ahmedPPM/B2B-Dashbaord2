@@ -86,22 +86,22 @@ export default function DashboardPage() {
 
   const range = useMemo(() => dateRange(rangeIdx), [rangeIdx]);
 
-  const filtered = useMemo(() => {
-    const matchStatus = (val: string | null | undefined, pick: string) => {
-      const v = (val || '').toLowerCase();
-      // Normalize to buckets so "Cancelled"/"cancelled", "Showed"/"showed" match.
-      if (pick === 'showed') return v.includes('show') && !v.includes('no');
-      if (pick === 'noshow') return v.includes('no') && v.includes('show');
-      if (pick === 'cancelled') return v.includes('cancel');
-      if (pick === 'scheduled') return v === 'scheduled' || v === 'confirmed' || v === 'new';
-      return v === pick.toLowerCase();
-    };
+  const matchStatus = (val: string | null | undefined, pick: string) => {
+    const v = (val || '').toLowerCase();
+    if (pick === 'showed') return v.includes('show') && !v.includes('no');
+    if (pick === 'noshow') return v.includes('no') && v.includes('show');
+    if (pick === 'cancelled') return v.includes('cancel');
+    if (pick === 'scheduled') return v === 'scheduled' || v === 'confirmed' || v === 'new';
+    return v === pick.toLowerCase();
+  };
+
+  // Lead set used for KPI math — honours the mode + user's filters but NOT
+  // the date window. Booking-date KPIs (intros/demos booked-in-window,
+  // no-shows, cancelled, clients closed) must consider a lead whose demo
+  // happens inside the window even if their opt-in was earlier.
+  const kpiScoped = useMemo(() => {
     return leads.filter((l) => {
       if (!matchesLeadFilter(l, mode)) return false;
-      if (l.date_opted_in) {
-        const t = new Date(l.date_opted_in).getTime();
-        if (t < range.from.getTime() || t > range.to.getTime()) return false;
-      }
       if (filters.score && String(l.app_grading) !== filters.score) return false;
       if (filters.stage) {
         const stageName = (l as Lead & { stage_name?: string }).stage_name || '';
@@ -124,24 +124,36 @@ export default function DashboardPage() {
       }
       return true;
     });
-  }, [leads, filters, range, mode]);
+  }, [leads, filters, mode]);
 
-  const kpis: KPIStats = useMemo(() => computeKpis(filtered, spend, range), [filtered, spend, range]);
+  // `filtered` additionally applies the date window — used where the UI
+  // wants a lead list scoped to "opted in during this period".
+  const filtered = useMemo(() => {
+    return kpiScoped.filter((l) => {
+      if (!l.date_opted_in) return true;
+      const t = new Date(l.date_opted_in).getTime();
+      return t >= range.from.getTime() && t <= range.to.getTime();
+    });
+  }, [kpiScoped, range]);
 
-  // Demo no-show / cancelled counts (derived, for drill-down KPI cards).
-  const demoNoShow = useMemo(() => filtered.filter((l) => {
+  const kpis: KPIStats = useMemo(() => computeKpis(kpiScoped, spend, range), [kpiScoped, spend, range]);
+
+  // Demo no-show / cancelled counts (drill-down KPI cards). Uses kpiScoped
+  // so a demo that happened in the window still counts even if the lead's
+  // opt-in was before the window.
+  const demoNoShow = useMemo(() => kpiScoped.filter((l) => {
     if (!l.demo_booked_for_date) return false;
     const t = new Date(l.demo_booked_for_date).getTime();
     if (t < range.from.getTime() || t > range.to.getTime()) return false;
     const s = (l.demo_show_status || '').toLowerCase();
     return s.includes('no') && s.includes('show');
-  }).length, [filtered, range]);
-  const demoCancelled = useMemo(() => filtered.filter((l) => {
+  }).length, [kpiScoped, range]);
+  const demoCancelled = useMemo(() => kpiScoped.filter((l) => {
     if (!l.demo_booked_for_date) return false;
     const t = new Date(l.demo_booked_for_date).getTime();
     if (t < range.from.getTime() || t > range.to.getTime()) return false;
     return (l.demo_show_status || '').toLowerCase().includes('cancel');
-  }).length, [filtered, range]);
+  }).length, [kpiScoped, range]);
 
   const closers = useMemo(() => {
     const all = leads.flatMap((l) => [l.assigned_user_name, l.intro_closer, l.demo_assigned_closer]).filter(Boolean) as string[];
