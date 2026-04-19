@@ -12,6 +12,7 @@ export interface GHLContact {
   phone?: string;
   tags?: string[];
   dateAdded?: string;
+  dateUpdated?: string;
   source?: string;
   assignedTo?: string;
   customFields?: Array<{ id: string; value: unknown }>;
@@ -103,6 +104,7 @@ export class GHLClient {
   async getContacts(params: {
     tags?: string[];
     startAfterDate?: string;
+    startAfterUpdatedDate?: string;
     limit?: number;
     page?: number;
   } = {}): Promise<{ contacts: GHLContact[]; total?: number }> {
@@ -117,6 +119,13 @@ export class GHLClient {
         field: 'dateAdded',
         operator: 'range',
         value: { gte: params.startAfterDate },
+      });
+    }
+    if (params.startAfterUpdatedDate) {
+      filters.push({
+        field: 'dateUpdated',
+        operator: 'range',
+        value: { gte: params.startAfterUpdatedDate },
       });
     }
     const body = {

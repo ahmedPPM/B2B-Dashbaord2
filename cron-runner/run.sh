@@ -14,8 +14,10 @@ hit() {
   echo
 }
 
-# Every fire: GHL contacts (quick) + call transcripts (quick-ish) + enrichment sweep
+# Every fire: GHL contacts (quick) + pull any new GHL call transcripts +
+# analyse pending transcripts + enrichment sweep.
 hit "/api/sync/ghl-contacts"
+hit "/api/sync/calls-from-ghl"
 hit "/api/sync/call-transcripts?manual=1"
 # Per-lead GHL sync: opportunities (pipeline_stage, client_closed),
 # appointments (intro/demo + closer names), custom fields (cash_collected,
@@ -27,6 +29,9 @@ HOUR=$(date -u +%H)
 if [ "$HOUR" = "06" ]; then
   hit "/api/sync/windsor"
   hit "/api/sync/hyros"
+  # Reconciliation catches anything webhook + hourly cron missed in the
+  # trailing 7 days. Runs last so any recovered leads get enriched tomorrow.
+  hit "/api/sync/reconcile"
 fi
 
 echo "done"

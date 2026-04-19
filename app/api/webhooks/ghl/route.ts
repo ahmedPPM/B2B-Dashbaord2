@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { calculateLeadScore } from '@/lib/scoring';
-import { resolveGhlUserName } from '@/lib/backfill';
-import type { GHLContact } from '@/lib/ghl';
+import { ensureLeadForContact, mapContactToLead, resolveGhlUserName } from '@/lib/backfill';
+import { ghl, type GHLContact } from '@/lib/ghl';
 
 function verifySignature(body: string, signature: string | null): boolean {
   const secret = process.env.GHL_WEBHOOK_SECRET;
@@ -63,20 +62,26 @@ async function handleEvent(payload: Record<string, unknown>) {
   if (isContactEvent) {
     const contact = rawContact as GHLContact;
     if (!contact?.id) return;
-    const score = calculateLeadScore(contact);
-    const name = contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(' ') || null;
-    // Only include fields actually present in the payload — avoids clobbering
-    // existing values with null on partial updates.
-    const row: Record<string, unknown> = {
-      ghl_contact_id: contact.id,
-      updated_at: new Date().toISOString(),
-    };
-    if (name) row.lead_name = name;
-    if (contact.email) row.email = contact.email.toLowerCase();
-    if (contact.phone) row.phone = contact.phone;
-    if (typeof score === 'number') row.app_grading = score;
-    if (contact.dateAdded) row.date_opted_in = contact.dateAdded;
-    if (contact.tags?.length) row.lead_tag = contact.tags[0];
+    // Webhook payloads sometimes omit `attributionSource` / `dateUpdated`. If
+    // any of those enrichment fields are missing, fetch the full contact
+    // before mapping — otherwise we'd overwrite a rich row with a skeleton.
+    const thin = !contact.attributionSource || !contact.dateUpdated;
+    let full: GHLContact = contact;
+    if (thin) {
+      try {
+        const r = await ghl.getContact(contact.id);
+        if (r?.contact) full = r.contact;
+      } catch (e) {
+        console.error('ghl getContact (webhook enrich)', contact.id, e);
+      }
+    }
+    const full_row = mapContactToLead(full);
+    // Don't clobber non-null fields with null on partial updates. Strip nulls.
+    const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const [k, v] of Object.entries(full_row)) {
+      if (v !== null && v !== undefined) row[k] = v;
+    }
+    row.ghl_contact_id = contact.id;
     await supa.from('leads').upsert(row, { onConflict: 'ghl_contact_id' });
 
     // If intro_call_transcripts custom field is in payload, queue for Claude analysis.
@@ -107,16 +112,16 @@ async function handleEvent(payload: Record<string, unknown>) {
   if (type === 'OpportunityStageChanged') {
     const p = payload as { contactId?: string; fromStageId?: string; toStageId?: string };
     if (!p.contactId) return;
-    const { data: lead } = await supa.from('leads').select('id').eq('ghl_contact_id', p.contactId).maybeSingle();
-    if (!lead) return;
+    const leadId = await ensureLeadForContact(p.contactId);
+    if (!leadId) return;
     await supa.from('pipeline_events').insert({
-      lead_id: lead.id,
+      lead_id: leadId,
       ghl_contact_id: p.contactId,
       from_stage: p.fromStageId || null,
       to_stage: p.toStageId || null,
       source: 'webhook',
     });
-    await supa.from('leads').update({ pipeline_stage: p.toStageId || null }).eq('id', lead.id);
+    await supa.from('leads').update({ pipeline_stage: p.toStageId || null }).eq('id', leadId);
     return;
   }
 
@@ -131,8 +136,8 @@ async function handleEvent(payload: Record<string, unknown>) {
       assignedUserId?: string;
     };
     if (!p.contactId) return;
-    const { data: lead } = await supa.from('leads').select('id').eq('ghl_contact_id', p.contactId).maybeSingle();
-    if (!lead) return;
+    const leadId = await ensureLeadForContact(p.contactId);
+    if (!leadId) return;
     const cid = p.calendarId || '';
     let kind: 'intro' | 'demo' | null = null;
     if (introCalendarIds().includes(cid)) kind = 'intro';
@@ -158,7 +163,7 @@ async function handleEvent(payload: Record<string, unknown>) {
             intro_show_status: showStatus,
             ...(closerName ? { intro_closer: closerName } : {}),
           };
-    await supa.from('leads').update(patch).eq('id', lead.id);
+    await supa.from('leads').update(patch).eq('id', leadId);
     return;
   }
 
@@ -166,10 +171,10 @@ async function handleEvent(payload: Record<string, unknown>) {
     const p = payload as { contactId?: string; body?: string; callId?: string };
     if (!p.contactId) return;
     if (!/call summary|transcript/i.test(p.body || '')) return;
-    const { data: lead } = await supa.from('leads').select('id').eq('ghl_contact_id', p.contactId).maybeSingle();
-    if (!lead) return;
+    const leadId = await ensureLeadForContact(p.contactId);
+    if (!leadId) return;
     await supa.from('call_analyses').insert({
-      lead_id: lead.id,
+      lead_id: leadId,
       ghl_contact_id: p.contactId,
       ghl_call_id: p.callId || `note-${Date.now()}`,
       call_type: 'other',

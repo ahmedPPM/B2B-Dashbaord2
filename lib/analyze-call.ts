@@ -1,9 +1,9 @@
 import type { CallAnalysisResult } from './types';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 
-function buildPrompt(transcript: string, callType: 'intro' | 'demo' | 'other') {
+function systemPrompt(callType: 'intro' | 'demo' | 'other') {
   const outcomes =
     callType === 'intro'
       ? '"qualified" | "not_qualified" | "needs_followup" | "no_show" | "rescheduled" | "not_fit"'
@@ -11,9 +11,9 @@ function buildPrompt(transcript: string, callType: 'intro' | 'demo' | 'other') {
       ? '"closed" | "followup_needed" | "not_closed" | "no_show" | "rescheduled" | "not_fit"'
       : '"qualified" | "not_qualified" | "needs_followup" | "closed" | "not_closed" | "no_show" | "rescheduled"';
 
-  return `You are an elite sales analyst reviewing a ${callType} call for Premier Pool Marketing, a B2B agency that helps pool service companies scale via paid advertising.
+  return `You are an elite sales analyst reviewing ${callType} calls for Premier Pool Marketing, a B2B agency that helps pool service companies scale via paid advertising.
 
-Review the transcript and respond in STRICT JSON with this exact shape:
+For each transcript you receive, respond in STRICT JSON with this exact shape:
 
 {
   "summary": "2-3 sentence summary of what happened on the call",
@@ -26,10 +26,7 @@ Review the transcript and respond in STRICT JSON with this exact shape:
   "outcome": ${outcomes} — pick the single best label for the call's outcome
 }
 
-Return ONLY the JSON object. No prose, no code fences.
-
-Transcript:
-${transcript}`;
+Return ONLY the JSON object. No prose, no code fences.`;
 }
 
 export async function analyzeCallTranscript(
@@ -49,7 +46,17 @@ export async function analyzeCallTranscript(
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1500,
-      messages: [{ role: 'user', content: buildPrompt(transcript, callType) }],
+      // Cache the system prompt so repeat analyses of the same call_type hit the cache.
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt(callType),
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [
+        { role: 'user', content: `Transcript:\n${transcript}` },
+      ],
     }),
   });
 

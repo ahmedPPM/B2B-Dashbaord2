@@ -17,11 +17,16 @@ export async function GET(req: Request) {
   let upserted = 0;
 
   try {
-    // `new_lead` is the live tag for current opt-ins (fast path).
-    // The untagged pass catches stragglers + non-form contacts (inbound call/SMS).
-    // `b2b typeform optin` was backfill-only — no longer needed on live cron.
+    // 1. Every contact currently carrying `new_lead` — no date filter. The tag
+    //    is actively pruned post-processing so this set stays small, and it
+    //    includes re-engaging contacts whose dateAdded is historical.
+    // 2. Anything updated in the last 24h — catches re-engagers even if the
+    //    `new_lead` tag was already removed, plus status/field changes.
+    // 3. Anything *added* in the last 24h — safety net for the rare case
+    //    GHL's dateUpdated filter lags on brand-new records.
     const queries: Array<Parameters<typeof ghl.getContacts>[0]> = [
-      { tags: ['new_lead'], startAfterDate: since, limit: 200 },
+      { tags: ['new_lead'], limit: 200 },
+      { startAfterUpdatedDate: since, limit: 200 },
       { startAfterDate: since, limit: 200 },
     ];
     for (const q of queries) {

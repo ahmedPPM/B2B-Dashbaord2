@@ -29,12 +29,33 @@ export interface BackfillResult {
   calendlyUpdated: number;
 }
 
+/**
+ * Returns the timestamp that should be shown as "opt-in date".
+ *
+ * Re-engaging contacts (existing GHL record, `new_lead` tag re-added months/years
+ * later) have an ancient `dateAdded` but a fresh `dateUpdated`. Treat the update
+ * time as opt-in in that case so the UI shows them as fresh leads.
+ */
+export function freshOptInDate(c: GHLContact): string | null {
+  const added = c.dateAdded || null;
+  const updated = c.dateUpdated || null;
+  if (!added) return updated;
+  if (!updated) return added;
+  const hasNewLead = (c.tags || []).some((t) => t === 'new_lead');
+  if (!hasNewLead) return added;
+  const addedMs = new Date(added).getTime();
+  const updatedMs = new Date(updated).getTime();
+  // If the gap is >24h, this contact is a re-engager, not a fresh import.
+  if (updatedMs - addedMs > 24 * 60 * 60 * 1000) return updated;
+  return added;
+}
+
 export function mapContactToLead(c: GHLContact): Record<string, unknown> {
   const name = c.name || [c.firstName, c.lastName].filter(Boolean).join(' ') || null;
   const attr = c.attributionSource || {};
   return {
     ghl_contact_id: c.id,
-    date_opted_in: c.dateAdded || null,
+    date_opted_in: freshOptInDate(c),
     lead_name: name,
     phone: c.phone || null,
     email: c.email ? c.email.toLowerCase() : null,
@@ -315,6 +336,60 @@ function pickNumericCustomField(contact: GHLContact, cfId: string): number | nul
  * - client_closed    ← latest opportunity.status === 'won'
  * - intro/demo fields + closer names ← from appointments
  */
+/**
+ * Look up a lead by GHL contact id; if none exists, fetch the contact from GHL
+ * and upsert it as a lead. Returns the lead's uuid (or null on failure).
+ *
+ * Used by the Calendly / Appointment / Note webhooks so an event that arrives
+ * before the lead webhook has landed doesn't get silently dropped.
+ */
+export async function ensureLeadForContact(contactId: string): Promise<string | null> {
+  const supa = supabaseAdmin();
+  const { data: existing } = await supa.from('leads').select('id').eq('ghl_contact_id', contactId).maybeSingle();
+  if (existing) return existing.id as string;
+  try {
+    const { contact } = await ghl.getContact(contactId);
+    if (!contact?.id) return null;
+    const row = mapContactToLead(contact);
+    const { data: inserted, error } = await supa
+      .from('leads')
+      .upsert(row, { onConflict: 'ghl_contact_id' })
+      .select('id')
+      .single();
+    if (error || !inserted) return null;
+    return inserted.id as string;
+  } catch (e) {
+    console.error('ensureLeadForContact', contactId, e);
+    return null;
+  }
+}
+
+/**
+ * Same thing keyed by email — Calendly doesn't send a contactId.
+ */
+export async function ensureLeadForEmail(email: string): Promise<string | null> {
+  const e = email.toLowerCase();
+  const supa = supabaseAdmin();
+  const { data: existing } = await supa.from('leads').select('id').eq('email', e).maybeSingle();
+  if (existing) return existing.id as string;
+  try {
+    const { contacts } = await ghl.searchContactByEmail(e);
+    const c = contacts?.[0];
+    if (!c?.id) return null;
+    const row = mapContactToLead(c);
+    const { data: inserted, error } = await supa
+      .from('leads')
+      .upsert(row, { onConflict: 'ghl_contact_id' })
+      .select('id')
+      .single();
+    if (error || !inserted) return null;
+    return inserted.id as string;
+  } catch (e) {
+    console.error('ensureLeadForEmail', email, e);
+    return null;
+  }
+}
+
 export async function enrichLeadFromGhl(contactId: string, leadId: string): Promise<void> {
   // Custom fields
   try {

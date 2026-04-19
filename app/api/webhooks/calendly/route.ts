@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyWebhookSignature } from '@/lib/calendly';
+import { ensureLeadForEmail } from '@/lib/backfill';
 
 interface CalendlyInviteePayload {
   event?: string;
@@ -42,12 +43,8 @@ export async function POST(req: Request) {
   if (!email || !startTime) return NextResponse.json({ ok: true });
 
   const supa = supabaseAdmin();
-  const { data: lead } = await supa
-    .from('leads')
-    .select('id')
-    .eq('email', email.toLowerCase())
-    .maybeSingle();
-  if (!lead) return NextResponse.json({ ok: true });
+  const leadId = await ensureLeadForEmail(email);
+  if (!leadId) return NextResponse.json({ ok: true });
 
   const isDemo = /demo/i.test(eventName);
   const canceled = evt === 'invitee.canceled' || evt === 'invitee.cancelled';
@@ -65,7 +62,7 @@ export async function POST(req: Request) {
         intro_created_date: new Date().toISOString(),
         intro_show_status: status,
       };
-  const { error } = await supa.from('leads').update(patch).eq('id', lead.id);
+  const { error } = await supa.from('leads').update(patch).eq('id', leadId);
   if (error) console.error('calendly webhook update', error);
 
   return NextResponse.json({ ok: true });
