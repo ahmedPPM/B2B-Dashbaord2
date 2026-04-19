@@ -3,6 +3,30 @@
 
 const BASE = 'https://services.leadconnectorhq.com';
 
+// Token-bucket limiter shared across every GHL call in this process.
+// GHL's published limit is 100 requests per 10s per location; we target 80
+// (20% headroom so webhook calls aren't squeezed by a long enrich sweep).
+const RATE_CAPACITY = Number(process.env.GHL_RATE_CAPACITY || 80);
+const RATE_REFILL_PER_SEC = Number(process.env.GHL_RATE_REFILL_PER_SEC || 8);
+let rateTokens = RATE_CAPACITY;
+let rateLastRefill = Date.now();
+
+async function acquireToken(): Promise<void> {
+  // Refill based on elapsed time.
+  const now = Date.now();
+  const elapsedSec = (now - rateLastRefill) / 1000;
+  rateTokens = Math.min(RATE_CAPACITY, rateTokens + elapsedSec * RATE_REFILL_PER_SEC);
+  rateLastRefill = now;
+  if (rateTokens >= 1) {
+    rateTokens -= 1;
+    return;
+  }
+  // Not enough — wait just long enough to earn one token, then retry.
+  const waitMs = Math.ceil(((1 - rateTokens) / RATE_REFILL_PER_SEC) * 1000);
+  await new Promise((r) => setTimeout(r, waitMs));
+  return acquireToken();
+}
+
 export interface GHLContact {
   id: string;
   firstName?: string;
@@ -85,11 +109,17 @@ export class GHLClient {
     return new Promise((r) => setTimeout(r, ms));
   }
 
-  private async request<T>(path: string, init: RequestInit = {}, retries = 3): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}, retries = 5): Promise<T> {
     for (let attempt = 0; attempt < retries; attempt++) {
+      await acquireToken();
       const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...this.headers(), ...(init.headers || {}) } });
       if (res.status === 429) {
-        await this.sleep(1000 * (attempt + 1));
+        // Honor Retry-After if GHL sent one; otherwise exponential backoff +
+        // jitter so parallel callers don't stampede on the same recovery.
+        const retryAfter = Number(res.headers.get('retry-after'));
+        const base = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 500 * 2 ** attempt;
+        const jitter = Math.floor(Math.random() * 250);
+        await this.sleep(base + jitter);
         continue;
       }
       if (!res.ok) {
@@ -98,7 +128,7 @@ export class GHLClient {
       }
       return (await res.json()) as T;
     }
-    throw new Error('GHL rate limited');
+    throw new Error(`GHL rate limited after ${retries} attempts: ${path}`);
   }
 
   async getContacts(params: {
@@ -250,6 +280,7 @@ export class GHLClient {
    */
   async getCallTranscription(messageId: string): Promise<string | null> {
     try {
+      await acquireToken();
       const res = await fetch(
         `${BASE}/conversations/locations/${this.locationId}/messages/${messageId}/transcription`,
         { headers: this.headers() }
