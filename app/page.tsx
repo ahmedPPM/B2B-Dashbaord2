@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BarChart3, Waves, ArrowRight } from 'lucide-react';
+import { BarChart3, Waves, Clapperboard, ArrowRight } from 'lucide-react';
 
 export default function Home() {
   const apps = [
@@ -17,6 +17,13 @@ export default function Home() {
       icon: Waves,
       external: true,
     },
+    {
+      href: 'https://avatar-forge-production.up.railway.app/',
+      title: 'Avatar Forge — Ad Creative Studio',
+      desc: 'Generate avatar-led video ads end-to-end with captions, film look, and branding.',
+      icon: Clapperboard,
+      external: true,
+    },
   ];
 
   return (
@@ -28,7 +35,7 @@ export default function Home() {
           <p className="text-zinc-400 mt-2">Choose an app to access.</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {apps.map((a) => {
             const Icon = a.icon;
             const cls = 'group relative rounded-xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/80 hover:border-emerald-700 transition p-6 flex flex-col gap-3';
