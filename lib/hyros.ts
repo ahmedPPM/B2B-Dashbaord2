@@ -96,6 +96,35 @@ export class HyrosClient {
     return data.result?.[0] || null;
   }
 
+  /**
+   * List every Hyros lead created in a date range. Paginates through
+   * Hyros's cursor-based pagination internally and returns the flat list.
+   * Dates are ISO YYYY-MM-DD.
+   */
+  async listLeads(params: { fromDate: string; toDate?: string; maxPages?: number }): Promise<HyrosLead[]> {
+    const leads: HyrosLead[] = [];
+    const seenIds = new Set<string>();
+    let pageId: string | undefined;
+    const maxPages = params.maxPages ?? 20;
+    for (let i = 0; i < maxPages; i++) {
+      const q = new URLSearchParams({ fromDate: params.fromDate });
+      if (params.toDate) q.set('toDate', params.toDate);
+      if (pageId) q.set('pageId', pageId);
+      const data = await this.request<{ result?: HyrosLead[]; pagination?: { pageId?: string | null } }>(
+        `/leads?${q.toString()}`,
+      );
+      for (const l of data.result || []) {
+        const key = (l.id || l.email || '').toString();
+        if (!key || seenIds.has(key)) continue;
+        seenIds.add(key);
+        leads.push(l);
+      }
+      pageId = data.pagination?.pageId || undefined;
+      if (!pageId) break;
+    }
+    return leads;
+  }
+
   async getAttribution(email: string): Promise<HyrosAttribution> {
     const lead = await this.getLeadByEmail(email);
     if (!lead) {

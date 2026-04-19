@@ -34,8 +34,10 @@ if [ "$HOUR" = "06" ]; then
   hit "/api/sync/windsor"
   hit "/api/sync/hyros"
   # Reconciliation catches anything webhook + hourly cron missed in the
-  # trailing 7 days. Runs last so any recovered leads get enriched tomorrow.
+  # trailing 7 days. GHL-driven first, then Hyros-driven — the Hyros pass
+  # closes the case where Hyros saw a paid opt-in that never made it into GHL.
   hit "/api/sync/reconcile"
+  hit "/api/sync/hyros-reconcile"
 fi
 
 echo "done"
