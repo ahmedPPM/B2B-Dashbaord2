@@ -20,6 +20,8 @@ export interface AppointmentRow {
   campaign_id: string | null;
   lead_source: string | null;
   outcome: string | null;
+  hyros_paid: boolean;        // true if this lead is confirmed paid by Hyros
+  is_paid_ad: boolean;        // any paid signal (campaign / source regex / hyros)
 }
 
 export async function GET(req: Request) {
@@ -28,16 +30,23 @@ export async function GET(req: Request) {
   const to = url.searchParams.get('to');
 
   const supa = supabaseAdmin();
-  const { data: leads, error } = await supa
-    .from('leads')
-    .select(`
-      id, lead_name, email, phone, tags,
-      intro_booked, intro_booked_for_date, intro_created_date, intro_show_status, intro_closer, intro_call_outcome,
-      demo_booked, demo_booked_for_date, demo_created_date, demo_show_status, demo_assigned_closer, demo_call_outcome,
-      assigned_user_name, campaign_name, campaign_id, lead_source
-    `)
-    .is('deleted_at', null);
+  const [leadsRes, hyrosRes] = await Promise.all([
+    supa
+      .from('leads')
+      .select(`
+        id, lead_name, email, phone, tags,
+        intro_booked, intro_booked_for_date, intro_created_date, intro_show_status, intro_closer, intro_call_outcome,
+        demo_booked, demo_booked_for_date, demo_created_date, demo_show_status, demo_assigned_closer, demo_call_outcome,
+        assigned_user_name, campaign_name, campaign_id, lead_source
+      `)
+      .is('deleted_at', null),
+    supa.from('hyros_attribution').select('email, is_paid_ad'),
+  ]);
+  const { data: leads, error } = leadsRes;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  const hyrosPaidEmails = new Set<string>(
+    (hyrosRes.data || []).filter((h) => h.is_paid_ad === true).map((h) => (h.email || '').toLowerCase()),
+  );
 
   // Resolve each lead's intro/demo outcome from GHL tags (cancelled > noshow
   // > showed). Fallback to the status string only when no tags are set yet.
@@ -62,9 +71,13 @@ export async function GET(req: Request) {
     assigned_user_name: string | null; campaign_name: string | null; campaign_id: string | null;
     lead_source: string | null;
   }
+  const paidRx = /facebook|meta|google|tiktok|instagram|youtube|paid|fb\b/i;
   type RowWithOutcome = AppointmentRow & { outcome_class: 'cancelled' | 'noshow' | 'showed' };
   const rows: RowWithOutcome[] = [];
   for (const l of (leads || []) as LeadWithTags[]) {
+    const emailKey = (l.email || '').toLowerCase();
+    const hyros_paid = emailKey ? hyrosPaidEmails.has(emailKey) : false;
+    const is_paid_ad = hyros_paid || !!l.campaign_id || !!l.campaign_name || paidRx.test(l.lead_source || '');
     if (l.intro_booked && l.intro_booked_for_date) {
       const cls = outcomeFor(l.tags, 'intro', l.intro_show_status);
       rows.push({
@@ -84,6 +97,8 @@ export async function GET(req: Request) {
         lead_source: l.lead_source,
         outcome: l.intro_call_outcome,
         outcome_class: cls,
+        hyros_paid,
+        is_paid_ad,
       });
     }
     if (l.demo_booked && l.demo_booked_for_date) {
@@ -105,6 +120,8 @@ export async function GET(req: Request) {
         lead_source: l.lead_source,
         outcome: l.demo_call_outcome,
         outcome_class: cls,
+        hyros_paid,
+        is_paid_ad,
       });
     }
   }

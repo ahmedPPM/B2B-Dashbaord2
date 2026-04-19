@@ -12,13 +12,21 @@ export async function GET() {
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
   const leadIds = Array.from(new Set((calls || []).map((c) => c.lead_id).filter(Boolean) as string[]));
-  const { data: leads } = leadIds.length
-    ? await supa
-        .from('leads')
-        .select('id, ghl_contact_id, lead_name, email, phone, assigned_user_name, campaign_name, pipeline_stage, intro_closer, demo_assigned_closer, date_opted_in')
-        .in('id', leadIds)
-        .is('deleted_at', null)
-    : { data: [] };
+  const [leadsRes, hyrosRes] = await Promise.all([
+    leadIds.length
+      ? supa
+          .from('leads')
+          .select('id, ghl_contact_id, lead_name, email, phone, assigned_user_name, campaign_name, campaign_id, lead_source, pipeline_stage, intro_closer, demo_assigned_closer, date_opted_in')
+          .in('id', leadIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    supa.from('hyros_attribution').select('email, is_paid_ad'),
+  ]);
+  const { data: leads } = leadsRes;
+  const hyrosPaidEmails = new Set<string>(
+    (hyrosRes.data || []).filter((h) => h.is_paid_ad === true).map((h) => (h.email || '').toLowerCase()),
+  );
+  const paidRx = /facebook|meta|google|tiktok|instagram|youtube|paid|fb\b/i;
 
   const callsByLead = new Map<string, typeof calls>();
   for (const c of calls || []) {
@@ -30,7 +38,10 @@ export async function GET() {
 
   const rows = (leads || [])
     .map((l) => {
-      const leadCalls = callsByLead.get(l.id) || [];
+      const leadCalls = callsByLead.get(l.id as string) || [];
+      const emailKey = ((l.email as string) || '').toLowerCase();
+      const hyros_paid = emailKey ? hyrosPaidEmails.has(emailKey) : false;
+      const is_paid_ad = hyros_paid || !!l.campaign_id || !!l.campaign_name || paidRx.test((l.lead_source as string) || '');
       return {
         ...l,
         calls: leadCalls,
@@ -39,6 +50,8 @@ export async function GET() {
         last_call_date: leadCalls[0]?.call_date || null,
         has_intro: leadCalls.some((c) => c.call_type === 'intro'),
         has_demo: leadCalls.some((c) => c.call_type === 'demo'),
+        hyros_paid,
+        is_paid_ad,
       };
     })
     .sort((a, b) => (b.last_call_date || '').localeCompare(a.last_call_date || ''));
