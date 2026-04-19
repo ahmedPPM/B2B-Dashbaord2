@@ -101,13 +101,17 @@ export class HyrosClient {
    * Hyros's cursor-based pagination internally and returns the flat list.
    * Dates are ISO YYYY-MM-DD.
    */
-  async listLeads(params: { fromDate: string; toDate?: string; maxPages?: number }): Promise<HyrosLead[]> {
+  async listLeads(params: { fromDate: string; toDate?: string; maxPages?: number; pageSize?: number }): Promise<HyrosLead[]> {
     const leads: HyrosLead[] = [];
     const seenIds = new Set<string>();
     let pageId: string | undefined;
     const maxPages = params.maxPages ?? 20;
+    // Hyros silently caps the default page size and OMITS pagination.pageId
+    // when a cap kicks in — always request an explicit size so we actually
+    // see pagination cursors when more pages exist.
+    const pageSize = params.pageSize ?? 250;
     for (let i = 0; i < maxPages; i++) {
-      const q = new URLSearchParams({ fromDate: params.fromDate });
+      const q = new URLSearchParams({ fromDate: params.fromDate, pageSize: String(pageSize) });
       if (params.toDate) q.set('toDate', params.toDate);
       if (pageId) q.set('pageId', pageId);
       const data = await this.request<{ result?: HyrosLead[]; pagination?: { pageId?: string | null } }>(
