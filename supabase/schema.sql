@@ -48,9 +48,14 @@ create table if not exists public.leads (
   updated_at timestamptz default now()
 );
 
+-- Full GHL tags array so we can classify intro/demo outcome by tag
+-- (e.g. intro-no-show / demo-cancelled) instead of the flaky status string.
+alter table public.leads add column if not exists tags text[];
+
 create index if not exists idx_leads_ghl on public.leads(ghl_contact_id);
 create index if not exists idx_leads_email on public.leads(email);
 create index if not exists idx_leads_tag on public.leads(lead_tag);
+create index if not exists idx_leads_tags on public.leads using gin(tags);
 create index if not exists idx_leads_stage on public.leads(pipeline_stage);
 create index if not exists idx_leads_opt on public.leads(date_opted_in);
 

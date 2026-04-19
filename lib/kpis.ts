@@ -1,4 +1,5 @@
 import type { Lead, WindsorRow, KPIStats } from './types';
+import { classifyFromTags } from './tag-classify';
 
 export interface DateRange {
   from: Date;
@@ -39,22 +40,24 @@ export function computeKpis(
   const periodLeads = leads.filter((l) => inRange(l.date_opted_in, range));
   const totalLeads = periodLeads.length;
 
-  // Status helpers — case-insensitive & pattern-based so mixed GHL values
-  // (Scheduled / confirmed / Showed / showed / noshow / Cancelled) behave
-  // consistently. Show-rate policy (per Anas): default = SHOWED unless
-  // explicitly marked no-show OR cancelled. This matches the team process
-  // where Eraldi marks only failures, not successes.
-  const isNoShow = (s: string | null | undefined) => {
-    const v = (s || '').toLowerCase();
-    return v.includes('no') && v.includes('show');
+  // Outcome classification is tag-driven (per Anas): cancelled > noshow >
+  // showed, decided by GHL tags like `demo-cancelled`, `intro-no-show`,
+  // `demo-showed`. Falls back to the legacy status string when a lead
+  // hasn't been tag-backfilled yet (backward compatible during rollout).
+  const outcomeOf = (l: Lead, kind: 'intro' | 'demo'): 'cancelled' | 'noshow' | 'showed' | null => {
+    const tagged = classifyFromTags(l.tags, kind);
+    if (tagged) return tagged;
+    const s = ((kind === 'intro' ? l.intro_show_status : l.demo_show_status) || '').toLowerCase();
+    if (s.includes('cancel')) return 'cancelled';
+    if (s.includes('no') && s.includes('show')) return 'noshow';
+    if (s) return 'showed';
+    return null;
   };
-  const isCancelled = (s: string | null | undefined) => {
-    const v = (s || '').toLowerCase();
-    return v.includes('cancel');
-  };
-  const isShownDefault = (s: string | null | undefined) => {
-    // anything that isn't explicitly no-show/cancelled → counts as shown
-    return !isNoShow(s) && !isCancelled(s);
+  // Show-rate policy: default = SHOWED unless explicitly marked no-show
+  // OR cancelled. Eraldi only marks failures, not successes.
+  const isShownDefault = (l: Lead, kind: 'intro' | 'demo') => {
+    const o = outcomeOf(l, kind);
+    return o !== 'noshow' && o !== 'cancelled';
   };
 
   // Intros
@@ -63,15 +66,13 @@ export function computeKpis(
     inRange(l.intro_booked_for_date, range)
   ).length;
   const introsShowed = leads.filter(
-    (l) =>
-      inRange(l.intro_booked_for_date, range) &&
-      isShownDefault(l.intro_show_status)
+    (l) => inRange(l.intro_booked_for_date, range) && isShownDefault(l, 'intro')
   ).length;
   const introNoShow = leads.filter(
-    (l) => inRange(l.intro_booked_for_date, range) && isNoShow(l.intro_show_status)
+    (l) => inRange(l.intro_booked_for_date, range) && outcomeOf(l, 'intro') === 'noshow'
   ).length;
   const introCancelled = leads.filter(
-    (l) => inRange(l.intro_booked_for_date, range) && isCancelled(l.intro_show_status)
+    (l) => inRange(l.intro_booked_for_date, range) && outcomeOf(l, 'intro') === 'cancelled'
   ).length;
 
   const trashLeads = periodLeads.filter((l) => l.app_grading === 1).length;
@@ -84,9 +85,7 @@ export function computeKpis(
     inRange(l.demo_booked_for_date, range)
   ).length;
   const demosShowed = leads.filter(
-    (l) =>
-      inRange(l.demo_booked_for_date, range) &&
-      isShownDefault(l.demo_show_status)
+    (l) => inRange(l.demo_booked_for_date, range) && isShownDefault(l, 'demo')
   ).length;
 
   // Closes

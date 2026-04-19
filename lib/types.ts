@@ -39,6 +39,7 @@ export interface Lead {
   cash_collected: number;
   contracted_mrr: number;
   lead_tag: string | null;
+  tags: string[] | null;
   backfilled: boolean;
   created_at: string;
   updated_at: string;

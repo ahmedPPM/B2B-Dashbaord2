@@ -68,6 +68,7 @@ export function mapContactToLead(c: GHLContact): Record<string, unknown> {
     ad_name: attr.adName || null,
     lead_source: c.source || attr.utmSource || 'Organic',
     lead_tag: (c.tags || [])[0] || null,
+    tags: Array.isArray(c.tags) && c.tags.length ? c.tags : null,
     assigned_user_id: c.assignedTo || null,
     backfilled: true,
     updated_at: new Date().toISOString(),
@@ -391,18 +392,21 @@ export async function ensureLeadForEmail(email: string): Promise<string | null> 
 }
 
 export async function enrichLeadFromGhl(contactId: string, leadId: string): Promise<void> {
-  // Custom fields
+  // Custom fields + tags
   try {
     const { contact } = await ghl.getContact(contactId);
-    if (contact?.customFields) {
-      const cash = pickNumericCustomField(contact, CF_IDS.cash_collected);
-      const tm = pickNumericCustomField(contact, CF_IDS.three_month_payment);
-      const tcr = pickNumericCustomField(contact, CF_IDS.total_contract_revenue);
-      // Prefer new-offer 3_month_payment over old-offer total_contract_revenue
-      const mrr = tm ?? tcr;
+    if (contact) {
       const patch: Record<string, unknown> = {};
-      if (cash !== null) patch.cash_collected = cash;
-      if (mrr !== null) patch.contracted_mrr = mrr;
+      if (contact.customFields) {
+        const cash = pickNumericCustomField(contact, CF_IDS.cash_collected);
+        const tm = pickNumericCustomField(contact, CF_IDS.three_month_payment);
+        const tcr = pickNumericCustomField(contact, CF_IDS.total_contract_revenue);
+        const mrr = tm ?? tcr;
+        if (cash !== null) patch.cash_collected = cash;
+        if (mrr !== null) patch.contracted_mrr = mrr;
+      }
+      // Always refresh tags so intro/demo outcome classification stays accurate.
+      if (Array.isArray(contact.tags)) patch.tags = contact.tags.length ? contact.tags : null;
       if (Object.keys(patch).length) {
         await supabaseAdmin().from('leads').update(patch).eq('id', leadId);
       }

@@ -5,6 +5,7 @@ import type { Lead, WindsorRow, KPIStats } from '@/lib/types';
 import { computeKpis } from '@/lib/kpis';
 import { useAdsOnly } from '@/lib/ads-only-context';
 import { matchesLeadFilter } from '@/lib/is-paid';
+import { classifyFromTags } from '@/lib/tag-classify';
 import { supabaseBrowser } from '@/lib/supabase/browser';
 import { KpiCard } from '@/components/kpi-card';
 import { Filters, defaultFilters, type FilterState } from '@/components/filters';
@@ -138,20 +139,24 @@ export default function DashboardPage() {
 
   const kpis: KPIStats = useMemo(() => computeKpis(kpiScoped, spend, range), [kpiScoped, spend, range]);
 
-  // Demo no-show / cancelled counts (drill-down KPI cards). Uses kpiScoped
-  // so a demo that happened in the window still counts even if the lead's
-  // opt-in was before the window.
+  // Demo no-show / cancelled counts (drill-down KPI cards). Tag-based per
+  // Anas: `demo-cancelled` beats `demo-no-show` beats `demo-showed`.
+  // Uses kpiScoped so demos in window still count when opt-in was earlier.
   const demoNoShow = useMemo(() => kpiScoped.filter((l) => {
     if (!l.demo_booked_for_date) return false;
     const t = new Date(l.demo_booked_for_date).getTime();
     if (t < range.from.getTime() || t > range.to.getTime()) return false;
+    const tagged = classifyFromTags(l.tags, 'demo');
+    if (tagged) return tagged === 'noshow';
     const s = (l.demo_show_status || '').toLowerCase();
-    return s.includes('no') && s.includes('show');
+    return s.includes('no') && s.includes('show') && !s.includes('cancel');
   }).length, [kpiScoped, range]);
   const demoCancelled = useMemo(() => kpiScoped.filter((l) => {
     if (!l.demo_booked_for_date) return false;
     const t = new Date(l.demo_booked_for_date).getTime();
     if (t < range.from.getTime() || t > range.to.getTime()) return false;
+    const tagged = classifyFromTags(l.tags, 'demo');
+    if (tagged) return tagged === 'cancelled';
     return (l.demo_show_status || '').toLowerCase().includes('cancel');
   }).length, [kpiScoped, range]);
 

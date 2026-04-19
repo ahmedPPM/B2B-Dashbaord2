@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { classifyFromTags } from '@/lib/tag-classify';
 
 // Flattens a lead's intro + demo bookings into a unified appointment list.
 // One lead can produce 0, 1, or 2 appointments.
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
   const { data: leads, error } = await supa
     .from('leads')
     .select(`
-      id, lead_name, email, phone,
+      id, lead_name, email, phone, tags,
       intro_booked, intro_booked_for_date, intro_created_date, intro_show_status, intro_closer, intro_call_outcome,
       demo_booked, demo_booked_for_date, demo_created_date, demo_show_status, demo_assigned_closer, demo_call_outcome,
       assigned_user_name, campaign_name, campaign_id, lead_source
@@ -38,9 +39,34 @@ export async function GET(req: Request) {
     .is('deleted_at', null);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  const rows: AppointmentRow[] = [];
-  for (const l of leads || []) {
+  // Resolve each lead's intro/demo outcome from GHL tags (cancelled > noshow
+  // > showed). Fallback to the status string only when no tags are set yet.
+  const outcomeFor = (tags: string[] | null, kind: 'intro' | 'demo', fallback: string | null): 'cancelled' | 'noshow' | 'showed' => {
+    const t = classifyFromTags(tags, kind);
+    if (t === 'cancelled') return 'cancelled';
+    if (t === 'noshow') return 'noshow';
+    if (t === 'showed') return 'showed';
+    const s = (fallback || '').toLowerCase();
+    if (s.includes('cancel')) return 'cancelled';
+    if (s.includes('no') && s.includes('show')) return 'noshow';
+    return 'showed';
+  };
+
+  interface LeadWithTags {
+    id: string; lead_name: string | null; email: string | null; phone: string | null;
+    tags: string[] | null;
+    intro_booked: boolean; intro_booked_for_date: string | null; intro_created_date: string | null;
+    intro_show_status: string | null; intro_closer: string | null; intro_call_outcome: string | null;
+    demo_booked: boolean; demo_booked_for_date: string | null; demo_created_date: string | null;
+    demo_show_status: string | null; demo_assigned_closer: string | null; demo_call_outcome: string | null;
+    assigned_user_name: string | null; campaign_name: string | null; campaign_id: string | null;
+    lead_source: string | null;
+  }
+  type RowWithOutcome = AppointmentRow & { outcome_class: 'cancelled' | 'noshow' | 'showed' };
+  const rows: RowWithOutcome[] = [];
+  for (const l of (leads || []) as LeadWithTags[]) {
     if (l.intro_booked && l.intro_booked_for_date) {
+      const cls = outcomeFor(l.tags, 'intro', l.intro_show_status);
       rows.push({
         id: `${l.id}:intro`,
         lead_id: l.id,
@@ -50,16 +76,18 @@ export async function GET(req: Request) {
         type: 'intro',
         booked_for: l.intro_booked_for_date,
         created_at: l.intro_created_date,
-        status: l.intro_show_status,
+        status: cls === 'cancelled' ? 'Cancelled' : cls === 'noshow' ? 'No-show' : (l.intro_show_status || 'Showed'),
         closer: l.intro_closer,
         assigned_user_name: l.assigned_user_name,
         campaign_name: l.campaign_name,
         campaign_id: l.campaign_id,
         lead_source: l.lead_source,
         outcome: l.intro_call_outcome,
+        outcome_class: cls,
       });
     }
     if (l.demo_booked && l.demo_booked_for_date) {
+      const cls = outcomeFor(l.tags, 'demo', l.demo_show_status);
       rows.push({
         id: `${l.id}:demo`,
         lead_id: l.id,
@@ -69,13 +97,14 @@ export async function GET(req: Request) {
         type: 'demo',
         booked_for: l.demo_booked_for_date,
         created_at: l.demo_created_date,
-        status: l.demo_show_status,
+        status: cls === 'cancelled' ? 'Cancelled' : cls === 'noshow' ? 'No-show' : (l.demo_show_status || 'Showed'),
         closer: l.demo_assigned_closer,
         assigned_user_name: l.assigned_user_name,
         campaign_name: l.campaign_name,
         campaign_id: l.campaign_id,
         lead_source: l.lead_source,
         outcome: l.demo_call_outcome,
+        outcome_class: cls,
       });
     }
   }
@@ -84,16 +113,6 @@ export async function GET(req: Request) {
   if (from) filtered = filtered.filter((r) => !r.booked_for || r.booked_for >= from);
   if (to) filtered = filtered.filter((r) => !r.booked_for || r.booked_for <= `${to}T23:59:59Z`);
 
-  // Status classifiers — default to SHOWED unless explicitly no-show or cancelled.
-  // (Policy: Eraldi marks only failures; unmarked / Scheduled / confirmed → showed.)
-  const isNo = (s: string | null) => {
-    const v = (s || '').toLowerCase();
-    return v.includes('no') && v.includes('show');
-  };
-  const isCancel = (s: string | null) => (s || '').toLowerCase().includes('cancel');
-  const isShown = (s: string | null) => !isNo(s) && !isCancel(s);
-
-  // Campaign breakdown: how many appts per campaign
   const byCampaign = new Map<string, { campaign_name: string; total: number; intros: number; demos: number; showed: number; noshow: number; cancelled: number }>();
   for (const r of filtered) {
     const name = r.campaign_name || 'Unattributed';
@@ -102,8 +121,8 @@ export async function GET(req: Request) {
     row.total++;
     if (r.type === 'intro') row.intros++;
     else row.demos++;
-    if (isNo(r.status)) row.noshow++;
-    else if (isCancel(r.status)) row.cancelled++;
+    if (r.outcome_class === 'noshow') row.noshow++;
+    else if (r.outcome_class === 'cancelled') row.cancelled++;
     else row.showed++;
     byCampaign.set(key, row);
   }
@@ -113,9 +132,9 @@ export async function GET(req: Request) {
     total: filtered.length,
     intros: filtered.filter((r) => r.type === 'intro').length,
     demos: filtered.filter((r) => r.type === 'demo').length,
-    showed: filtered.filter((r) => isShown(r.status)).length,
-    noshow: filtered.filter((r) => isNo(r.status)).length,
-    cancelled: filtered.filter((r) => isCancel(r.status)).length,
+    showed: filtered.filter((r) => r.outcome_class === 'showed').length,
+    noshow: filtered.filter((r) => r.outcome_class === 'noshow').length,
+    cancelled: filtered.filter((r) => r.outcome_class === 'cancelled').length,
     upcoming: filtered.filter((r) => r.booked_for && r.booked_for > new Date().toISOString()).length,
   } });
 }
