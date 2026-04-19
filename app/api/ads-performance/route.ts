@@ -25,6 +25,11 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const from = url.searchParams.get('from') || '2026-01-01';
   const to = url.searchParams.get('to') || new Date().toISOString().slice(0, 10);
+  // mode: 'all' | 'ads' | 'hyros' — matches the dashboard's top-right filter.
+  //   hyros → only leads Hyros confirms as paid
+  //   ads   → leads with any paid signal (campaign id, source regex, hyros)
+  //   all   → every lead in range
+  const mode = (url.searchParams.get('mode') || 'hyros') as 'all' | 'ads' | 'hyros';
 
   const supa = supabaseAdmin();
   const [spendRes, leadsRes, hyrosRes] = await Promise.all([
@@ -35,7 +40,7 @@ export async function GET(req: Request) {
       .lte('date', to),
     supa
       .from('leads')
-      .select('campaign_id, campaign_name, intro_booked, demo_booked, client_closed, cash_collected, contracted_mrr, email, date_opted_in')
+      .select('campaign_id, campaign_name, intro_booked, demo_booked, client_closed, cash_collected, contracted_mrr, email, lead_source, date_opted_in')
       .is('deleted_at', null)
       .gte('date_opted_in', `${from}T00:00:00Z`)
       .lte('date_opted_in', `${to}T23:59:59Z`),
@@ -44,13 +49,30 @@ export async function GET(req: Request) {
       .select('email, revenue_attributed, ad_name, is_paid_ad'),
   ]);
 
-  const hyrosByEmail = new Map<string, { revenue: number; ad_name: string | null }>();
+  const hyrosByEmail = new Map<string, { revenue: number; ad_name: string | null; is_paid: boolean }>();
   for (const h of hyrosRes.data || []) {
     hyrosByEmail.set((h.email || '').toLowerCase(), {
       revenue: h.revenue_attributed || 0,
       ad_name: h.ad_name || null,
+      is_paid: h.is_paid_ad === true,
     });
   }
+
+  const paidRx = /facebook|meta|google|tiktok|instagram|youtube|paid|fb\b/i;
+  const isHyrosVerified = (email: string | null) => {
+    if (!email) return false;
+    return hyrosByEmail.get(email.toLowerCase())?.is_paid === true;
+  };
+  const hasAnyPaidSignal = (l: { campaign_id?: string | null; campaign_name?: string | null; lead_source?: string | null; email?: string | null }) => {
+    if (l.campaign_id || l.campaign_name) return true;
+    if (paidRx.test(l.lead_source || '')) return true;
+    return isHyrosVerified(l.email ?? null);
+  };
+  const keepLead = (l: { campaign_id?: string | null; campaign_name?: string | null; lead_source?: string | null; email?: string | null }) => {
+    if (mode === 'hyros') return isHyrosVerified(l.email ?? null);
+    if (mode === 'ads') return hasAnyPaidSignal(l);
+    return true;
+  };
 
   const byCampaign = new Map<string, CampaignRow>();
   // Windsor campaign_ids (18-digit Meta ad IDs) don't match GHL lead campaign_ids
@@ -71,6 +93,7 @@ export async function GET(req: Request) {
   }
 
   for (const l of leadsRes.data || []) {
+    if (!keepLead(l)) continue;
     const k = keyOf(l.campaign_name, l.campaign_id);
     const r = byCampaign.get(k) || blankRow(l.campaign_id, l.campaign_name);
     r.leads++;
@@ -122,7 +145,7 @@ export async function GET(req: Request) {
   }
   const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
-  return NextResponse.json({ ok: true, rows, totals, daily, from, to });
+  return NextResponse.json({ ok: true, rows, totals, daily, from, to, mode });
 }
 
 function blankRow(campaign_id: string | null, campaign_name: string | null): CampaignRow {

@@ -57,13 +57,16 @@ export default function AdsPage() {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('spend');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const { adsOnly } = useAdsOnly();
+  const { mode } = useAdsOnly();
 
   const sortedFiltered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let filtered = adsOnly
-      ? rows.filter((r) => (r.campaign_name || '').toLowerCase() !== 'unattributed' && !!(r.campaign_name || r.campaign_id))
-      : rows;
+    // Leads filtering is done server-side (mode param). Here we only hide
+    // the "unattributed" bucket when the user is in ads/hyros mode so the
+    // By-Campaign table only shows actual ads, matching the KPI totals.
+    let filtered = mode === 'all'
+      ? rows
+      : rows.filter((r) => !!(r.campaign_name || r.campaign_id));
     filtered = q
       ? filtered.filter((r) =>
           (r.campaign_name || '').toLowerCase().includes(q) ||
@@ -77,7 +80,7 @@ export default function AdsPage() {
       const as = String(av ?? ''); const bs = String(bv ?? '');
       return sortDir === 'asc' ? as.localeCompare(bs) : bs.localeCompare(as);
     });
-  }, [rows, search, sortKey, sortDir, adsOnly]);
+  }, [rows, search, sortKey, sortDir, mode]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -87,7 +90,7 @@ export default function AdsPage() {
   useEffect(() => {
     const range = RANGES[rangeIdx];
     setLoading(true);
-    fetch(`/api/ads-performance?from=${range.from()}&to=${range.to()}`)
+    fetch(`/api/ads-performance?from=${range.from()}&to=${range.to()}&mode=${mode}`)
       .then((r) => r.json())
       .then((json) => {
         if (json.ok) {
@@ -97,7 +100,7 @@ export default function AdsPage() {
         }
       })
       .finally(() => setLoading(false));
-  }, [rangeIdx]);
+  }, [rangeIdx, mode]);
 
   const leadToCloseRate = totals && totals.leads ? (totals.clients_closed / totals.leads) * 100 : 0;
   const showRevenue = totals ? Math.max(totals.cash_collected, totals.hyros_revenue) : 0;
