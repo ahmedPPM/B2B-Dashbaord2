@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { Search, ArrowUp, ArrowDown, Calendar, UserCheck, UserX, Ban, Clock } from 'lucide-react';
 import { useAdsOnly } from '@/lib/ads-only-context';
-import { isFromAds } from '@/lib/is-paid';
+import { matchesLeadFilter } from '@/lib/is-paid';
 
 interface Row {
   id: string;
@@ -81,7 +81,7 @@ function AppointmentsInner() {
   const [sortKey, setSortKey] = useState<SortKey>('booked_for');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [loading, setLoading] = useState(true);
-  const { adsOnly } = useAdsOnly();
+  const { mode } = useAdsOnly();
 
   useEffect(() => {
     const r = RANGES[rangeIdx];
@@ -101,7 +101,7 @@ function AppointmentsInner() {
   const sortedFiltered = useMemo(() => {
     const q = searchText.trim().toLowerCase();
     let out = rows.filter((r) => {
-      if (adsOnly && !isFromAds(r)) return false;
+      if (!matchesLeadFilter(r, mode)) return false;
       if (typeFilter !== 'all' && r.type !== typeFilter) return false;
       if (statusFilter !== 'all') {
         const s = (r.status || '').toLowerCase();
@@ -128,7 +128,7 @@ function AppointmentsInner() {
       return sortDir === 'asc' ? as.localeCompare(bs) : bs.localeCompare(as);
     });
     return out;
-  }, [rows, searchText, typeFilter, statusFilter, sortKey, sortDir, adsOnly]);
+  }, [rows, searchText, typeFilter, statusFilter, sortKey, sortDir, mode]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');

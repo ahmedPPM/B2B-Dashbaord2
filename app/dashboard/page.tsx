@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Lead, WindsorRow, KPIStats } from '@/lib/types';
 import { computeKpis } from '@/lib/kpis';
 import { useAdsOnly } from '@/lib/ads-only-context';
-import { isFromAds } from '@/lib/is-paid';
+import { matchesLeadFilter } from '@/lib/is-paid';
 import { supabaseBrowser } from '@/lib/supabase/browser';
 import { KpiCard } from '@/components/kpi-card';
 import { Filters, defaultFilters, type FilterState } from '@/components/filters';
@@ -40,7 +40,7 @@ export default function DashboardPage() {
   const [rangeIdx, setRangeIdx] = useState(2); // default MTD
   const [view, setView] = useState<'summary' | 'leads'>('leads');
   const [loaded, setLoaded] = useState(false);
-  const { adsOnly } = useAdsOnly();
+  const { mode } = useAdsOnly();
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +97,7 @@ export default function DashboardPage() {
       return v === pick.toLowerCase();
     };
     return leads.filter((l) => {
-      if (adsOnly && !isFromAds(l)) return false;
+      if (!matchesLeadFilter(l, mode)) return false;
       if (l.date_opted_in) {
         const t = new Date(l.date_opted_in).getTime();
         if (t < range.from.getTime() || t > range.to.getTime()) return false;
@@ -124,7 +124,7 @@ export default function DashboardPage() {
       }
       return true;
     });
-  }, [leads, filters, range, adsOnly]);
+  }, [leads, filters, range, mode]);
 
   const kpis: KPIStats = useMemo(() => computeKpis(filtered, spend, range), [filtered, spend, range]);
 

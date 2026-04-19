@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Lead } from '@/lib/types';
 import { LeadTable } from '@/components/lead-table';
 import { useAdsOnly } from '@/lib/ads-only-context';
-import { isFromAds } from '@/lib/is-paid';
+import { isFromAds, isHyrosVerified } from '@/lib/is-paid';
 import { Search } from 'lucide-react';
 
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -23,7 +23,7 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [query, setQuery] = useState('');
   const [rangeIdx, setRangeIdx] = useState(4); // default All
-  const { adsOnly } = useAdsOnly();
+  const { mode } = useAdsOnly();
 
   useEffect(() => {
     (async () => {
@@ -43,7 +43,8 @@ export default function LeadsPage() {
     const from = r.from() + 'T00:00:00Z';
     const to = r.to() + 'T23:59:59Z';
     return leads.filter((l) => {
-      if (adsOnly && !isFromAds(l)) return false;
+      if (mode === 'hyros' && !isHyrosVerified(l)) return false;
+      if (mode === 'ads' && !isFromAds(l)) return false;
       if (l.date_opted_in) {
         if (l.date_opted_in < from || l.date_opted_in > to) return false;
       }
@@ -56,7 +57,7 @@ export default function LeadsPage() {
         (l.campaign_name || '').toLowerCase().includes(q)
       );
     });
-  }, [leads, query, adsOnly, rangeIdx]);
+  }, [leads, query, mode, rangeIdx]);
 
   return (
     <div className="space-y-4">

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Users, Settings, Waves, History, BarChart3, Calendar, Phone, Trophy, Target, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, Waves, History, BarChart3, Calendar, Phone, Trophy, Target, CheckCircle2, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AdsOnlyProvider, useAdsOnly } from '@/lib/ads-only-context';
 
@@ -28,8 +28,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
 function LayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { adsOnly, toggle } = useAdsOnly();
+  const { mode, cycle } = useAdsOnly();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const modeLabel = mode === 'hyros' ? 'Hyros ✓' : mode === 'ads' ? 'Ads only' : 'All leads';
+  const modeShort = mode === 'hyros' ? 'Hyros' : mode === 'ads' ? 'Ads' : 'All';
+  const modeTitle =
+    mode === 'hyros'
+      ? 'Showing only leads Hyros confirms as paid'
+      : mode === 'ads'
+      ? 'Showing any lead with a paid signal (campaign, source, or Hyros)'
+      : 'Showing every lead — including organic and survey';
+  const ModeIcon = mode === 'hyros' ? CheckCircle2 : Target;
 
   // Close drawer on route change
   useEffect(() => { setMobileOpen(false); }, [pathname]);
@@ -99,18 +109,20 @@ function LayoutInner({ children }: { children: React.ReactNode }) {
           </button>
           <h1 className="text-sm font-medium text-zinc-400 truncate flex-1 md:flex-none">Premier Pool Marketing</h1>
           <button
-            onClick={toggle}
-            title="Exclude leads with no ad source from all metrics"
+            onClick={cycle}
+            title={modeTitle}
             className={cn(
               'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition whitespace-nowrap',
-              adsOnly
+              mode === 'hyros'
                 ? 'bg-emerald-600/20 text-emerald-300 border-emerald-700'
+                : mode === 'ads'
+                ? 'bg-blue-600/20 text-blue-300 border-blue-700'
                 : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:bg-zinc-800',
             )}
           >
-            <Target className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{adsOnly ? 'Ads only: ON' : 'Ads only: OFF'}</span>
-            <span className="sm:hidden">{adsOnly ? 'ON' : 'OFF'}</span>
+            <ModeIcon className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{modeLabel}</span>
+            <span className="sm:hidden">{modeShort}</span>
           </button>
         </header>
         <main className="flex-1 p-4 md:p-6 overflow-auto">{children}</main>

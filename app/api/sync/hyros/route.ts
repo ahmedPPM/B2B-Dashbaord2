@@ -9,11 +9,20 @@ export async function GET(req: Request) {
   }
 
   const supa = supabaseAdmin();
-  const { data: leads, error: leadsErr } = await supa
+  const url = new URL(req.url);
+  // ?recent=true → only check leads whose date_opted_in is within the last
+  // RECENT_HYROS_WINDOW_DAYS (default 3). Used by the hourly cron to keep
+  // fresh leads tagged without re-scanning the full 5000-row history.
+  const recent = url.searchParams.get('recent') === 'true';
+  const recentDays = Number(process.env.RECENT_HYROS_WINDOW_DAYS || '3');
+  const recentSince = new Date(Date.now() - recentDays * 24 * 60 * 60 * 1000).toISOString();
+
+  let query = supa
     .from('leads')
     .select('id, email')
-    .not('email', 'is', null)
-    .limit(5000);
+    .not('email', 'is', null);
+  if (recent) query = query.gte('date_opted_in', recentSince);
+  const { data: leads, error: leadsErr } = await query.limit(5000);
 
   if (leadsErr) {
     return NextResponse.json({ ok: false, error: leadsErr.message }, { status: 500 });

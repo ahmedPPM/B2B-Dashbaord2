@@ -6,7 +6,7 @@ import type { CallAnalysis } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
 import { Search, Phone, Play, Sparkles, User, Mic, ChevronDown, ChevronRight, Loader2, ExternalLink } from 'lucide-react';
 import { useAdsOnly } from '@/lib/ads-only-context';
-import { isFromAds } from '@/lib/is-paid';
+import { matchesLeadFilter } from '@/lib/is-paid';
 
 interface LeadWithCalls {
   id: string;
@@ -35,7 +35,7 @@ export default function CallsPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'intro' | 'demo'>('all');
   const [analyzing, setAnalyzing] = useState(false);
-  const { adsOnly } = useAdsOnly();
+  const { mode } = useAdsOnly();
 
   useEffect(() => { load(); }, []);
 
@@ -69,7 +69,7 @@ export default function CallsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (adsOnly && !isFromAds(r)) return false;
+      if (!matchesLeadFilter(r, mode)) return false;
       if (typeFilter === 'intro' && !r.has_intro) return false;
       if (typeFilter === 'demo' && !r.has_demo) return false;
       if (!q) return true;
@@ -80,7 +80,7 @@ export default function CallsPage() {
         (r.campaign_name || '').toLowerCase().includes(q)
       );
     });
-  }, [rows, search, typeFilter, adsOnly]);
+  }, [rows, search, typeFilter, mode]);
 
   const totals = useMemo(() => ({
     leads: rows.length,

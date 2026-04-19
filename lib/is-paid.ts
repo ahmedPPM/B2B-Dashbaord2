@@ -22,3 +22,18 @@ export function isFromAds(l: PaidFields): boolean {
   const s = (l.lead_source || '').toLowerCase();
   return PAID_SOURCE_RX.test(s);
 }
+
+// A lead is "Hyros-verified" only if Hyros's pixel actually attributed it to
+// a paid click. Strictest filter — drops organic, survey leads, and any
+// contact Hyros never saw.
+export function isHyrosVerified(l: PaidFields): boolean {
+  return l.hyros_paid === true;
+}
+
+// Single helper for the dashboard's 3-way filter. Returns true when the
+// lead should be visible in the given mode.
+export function matchesLeadFilter(l: PaidFields, mode: 'all' | 'ads' | 'hyros'): boolean {
+  if (mode === 'hyros') return isHyrosVerified(l);
+  if (mode === 'ads') return isFromAds(l);
+  return true;
+}

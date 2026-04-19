@@ -15,10 +15,14 @@ hit() {
 }
 
 # Every fire: GHL contacts (quick) + pull any new GHL call transcripts +
-# analyse pending transcripts + enrichment sweep.
+# analyse pending transcripts + tag fresh leads with Hyros attribution +
+# enrichment sweep.
 hit "/api/sync/ghl-contacts"
 hit "/api/sync/calls-from-ghl"
 hit "/api/sync/call-transcripts?manual=1"
+# Incremental Hyros pass: only checks leads from the last few days so the
+# "Hyros ✓" filter stays fresh without the 5000-row daily sweep.
+hit "/api/sync/hyros?recent=true"
 # Per-lead GHL sync: opportunities (pipeline_stage, client_closed),
 # appointments (intro/demo + closer names), custom fields (cash_collected,
 # contracted_mrr). Up to 5 min.
