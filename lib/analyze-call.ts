@@ -1,7 +1,24 @@
+import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createRequire } from 'module';
 import type { CallAnalysisResult } from './types';
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-6';
+// Locate the claude CLI that ships with @anthropic-ai/claude-code.
+// Railway's npm install runs the platform-specific postinstall, which
+// drops the Linux binary at node_modules/@anthropic-ai/claude-code/bin/claude.exe
+// on the deploy container (same filename across platforms).
+const requireFromHere = createRequire(import.meta.url);
+let resolvedClaudeCliPath: string | null = null;
+try {
+  const pkgJsonPath = requireFromHere.resolve('@anthropic-ai/claude-code/package.json');
+  resolvedClaudeCliPath = pkgJsonPath.replace(/package\.json$/, 'bin/claude.exe');
+} catch {
+  // The SDK has its own fallback resolver if we leave the path unset.
+}
+
+// Model served via the Claude Max subscription through the Agent SDK.
+// Auth comes from CLAUDE_CODE_OAUTH_TOKEN (generated once via `claude setup-token`).
+// We disable all tools — this is a one-shot structured text generation, no agent loop.
+const MODEL = 'claude-sonnet-4-5';
 
 function systemPrompt(callType: 'intro' | 'demo' | 'other') {
   const outcomes =
@@ -33,47 +50,36 @@ export async function analyzeCallTranscript(
   transcript: string,
   callType: 'intro' | 'demo' | 'other'
 ): Promise<CallAnalysisResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY missing');
-
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1500,
-      // Cache the system prompt so repeat analyses of the same call_type hit the cache.
-      system: [
-        {
-          type: 'text',
-          text: systemPrompt(callType),
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      messages: [
-        { role: 'user', content: `Transcript:\n${transcript}` },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Claude API ${res.status}: ${t.slice(0, 300)}`);
+  if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
+    throw new Error('CLAUDE_CODE_OAUTH_TOKEN missing (run `claude setup-token` to generate one)');
   }
 
-  const data = (await res.json()) as {
-    content: Array<{ type: string; text: string }>;
-  };
-  const text = data.content?.map((c) => c.text).join('') || '';
-  // Extract JSON even if model wrapped it.
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON in Claude response');
-  const parsed = JSON.parse(match[0]) as CallAnalysisResult;
-  return parsed;
+  const result = query({
+    prompt: `Transcript:\n${transcript}`,
+    options: {
+      model: MODEL,
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt(callType) },
+      allowedTools: [],
+      maxTurns: 1,
+      permissionMode: 'bypassPermissions',
+      ...(resolvedClaudeCliPath ? { pathToClaudeCodeExecutable: resolvedClaudeCliPath } : {}),
+    },
+  });
+
+  let final = '';
+  for await (const msg of result) {
+    if (msg.type !== 'result') continue;
+    if (msg.subtype === 'success') {
+      final = msg.result || '';
+    } else {
+      throw new Error(`Agent SDK error: ${msg.subtype}`);
+    }
+  }
+  if (!final) throw new Error('No result from Agent SDK query');
+
+  const match = final.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error(`No JSON in response: ${final.slice(0, 200)}`);
+  return JSON.parse(match[0]) as CallAnalysisResult;
 }
 
 export const ANALYSIS_MODEL = MODEL;
