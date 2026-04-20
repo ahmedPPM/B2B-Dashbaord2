@@ -41,7 +41,12 @@ export function freshOptInDate(c: GHLContact): string | null {
   const updated = c.dateUpdated || null;
   if (!added) return updated;
   if (!updated) return added;
-  const hasNewLead = (c.tags || []).some((t) => t === 'new_lead');
+  const tagList = Array.isArray(c.tags)
+    ? (c.tags as string[])
+    : typeof c.tags === 'string'
+      ? (c.tags as string).split(',').map((s) => s.trim())
+      : [];
+  const hasNewLead = tagList.some((t) => t === 'new_lead');
   if (!hasNewLead) return added;
   const addedMs = new Date(added).getTime();
   const updatedMs = new Date(updated).getTime();
@@ -50,9 +55,22 @@ export function freshOptInDate(c: GHLContact): string | null {
   return added;
 }
 
+// GHL sometimes ships `tags` as a comma-delimited string on webhook
+// payloads even though the API returns an array. Normalise so downstream
+// always sees string[] | null.
+function normalizeTags(raw: unknown): string[] | null {
+  if (Array.isArray(raw)) return (raw as string[]).length ? (raw as string[]) : null;
+  if (typeof raw === 'string') {
+    const arr = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    return arr.length ? arr : null;
+  }
+  return null;
+}
+
 export function mapContactToLead(c: GHLContact): Record<string, unknown> {
   const name = c.name || [c.firstName, c.lastName].filter(Boolean).join(' ') || null;
   const attr = c.attributionSource || {};
+  const tags = normalizeTags(c.tags);
   return {
     ghl_contact_id: c.id,
     date_opted_in: freshOptInDate(c),
@@ -67,8 +85,8 @@ export function mapContactToLead(c: GHLContact): Record<string, unknown> {
     ad_set_name: attr.adSetName || null,
     ad_name: attr.adName || null,
     lead_source: c.source || attr.utmSource || 'Organic',
-    lead_tag: (c.tags || [])[0] || null,
-    tags: Array.isArray(c.tags) && c.tags.length ? c.tags : null,
+    lead_tag: tags?.[0] || null,
+    tags,
     assigned_user_id: c.assignedTo || null,
     backfilled: true,
     updated_at: new Date().toISOString(),

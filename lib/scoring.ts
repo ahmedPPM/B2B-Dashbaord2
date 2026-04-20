@@ -38,7 +38,15 @@ export function calculateLeadScore(contact: GHLContact): 1 | 2 | 3 | 4 {
   const city = (cf(contact, ['city']) || '').toLowerCase();
   const revenueStr = cf(contact, ['revenue', 'annual_revenue', 'company_revenue']);
   const revenue = parseRevenue(revenueStr);
-  const tags = (contact.tags || []).join(' ').toLowerCase();
+  // GHL webhooks occasionally send `tags` as a comma-delimited string
+  // instead of an array, so normalise before joining.
+  const rawTags = contact.tags as unknown;
+  const tagArr = Array.isArray(rawTags)
+    ? (rawTags as string[])
+    : typeof rawTags === 'string'
+      ? (rawTags as string).split(',').map((s) => s.trim())
+      : [];
+  const tags = tagArr.join(' ').toLowerCase();
 
   // Trash signals
   if (!email || !phone) return 1;
