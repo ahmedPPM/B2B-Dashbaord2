@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.114",
+    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "^0.2.114",
     "@anthropic-ai/claude-code": "^2.1.114",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
