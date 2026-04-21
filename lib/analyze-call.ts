@@ -1,24 +1,9 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import { createRequire } from 'module';
 import type { CallAnalysisResult } from './types';
 
-// Locate the claude CLI that ships with @anthropic-ai/claude-code.
-// Railway's npm install runs the platform-specific postinstall, which
-// drops the Linux binary at node_modules/@anthropic-ai/claude-code/bin/claude.exe
-// on the deploy container (same filename across platforms).
-const requireFromHere = createRequire(import.meta.url);
-let resolvedClaudeCliPath: string | null = null;
-try {
-  const pkgJsonPath = requireFromHere.resolve('@anthropic-ai/claude-code/package.json');
-  resolvedClaudeCliPath = pkgJsonPath.replace(/package\.json$/, 'bin/claude.exe');
-} catch {
-  // The SDK has its own fallback resolver if we leave the path unset.
-}
-
-// Model served via the Claude Max subscription through the Agent SDK.
-// Auth comes from CLAUDE_CODE_OAUTH_TOKEN (generated once via `claude setup-token`).
-// We disable all tools — this is a one-shot structured text generation, no agent loop.
-const MODEL = 'claude-sonnet-4-5';
+// Uses OpenAI's gpt-4o-mini — cheap, fast, strong enough for structured
+// call analysis. Bypass the Anthropic pay-as-you-go billing problem.
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const MODEL = 'gpt-4o-mini';
 
 function systemPrompt(callType: 'intro' | 'demo' | 'other') {
   const outcomes =
@@ -50,36 +35,37 @@ export async function analyzeCallTranscript(
   transcript: string,
   callType: 'intro' | 'demo' | 'other'
 ): Promise<CallAnalysisResult> {
-  if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
-    throw new Error('CLAUDE_CODE_OAUTH_TOKEN missing (run `claude setup-token` to generate one)');
-  }
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY missing');
 
-  const result = query({
-    prompt: `Transcript:\n${transcript}`,
-    options: {
-      model: MODEL,
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt(callType) },
-      allowedTools: [],
-      maxTurns: 1,
-      permissionMode: 'bypassPermissions',
-      ...(resolvedClaudeCliPath ? { pathToClaudeCodeExecutable: resolvedClaudeCliPath } : {}),
+  const res = await fetch(OPENAI_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      model: MODEL,
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+      messages: [
+        { role: 'system', content: systemPrompt(callType) },
+        { role: 'user', content: `Transcript:\n${transcript}` },
+      ],
+    }),
   });
 
-  let final = '';
-  for await (const msg of result) {
-    if (msg.type !== 'result') continue;
-    if (msg.subtype === 'success') {
-      final = msg.result || '';
-    } else {
-      throw new Error(`Agent SDK error: ${msg.subtype}`);
-    }
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`OpenAI ${res.status}: ${t.slice(0, 300)}`);
   }
-  if (!final) throw new Error('No result from Agent SDK query');
 
-  const match = final.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error(`No JSON in response: ${final.slice(0, 200)}`);
-  return JSON.parse(match[0]) as CallAnalysisResult;
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const text = data.choices?.[0]?.message?.content || '';
+  if (!text) throw new Error('Empty OpenAI response');
+  return JSON.parse(text) as CallAnalysisResult;
 }
 
 export const ANALYSIS_MODEL = MODEL;
