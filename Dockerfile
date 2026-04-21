@@ -12,7 +12,12 @@ ENV npm_config_os=linux
 ENV npm_config_cpu=x64
 RUN npm ci --include=optional --legacy-peer-deps --force \
   && test -f node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude \
-  && echo "glibc binary OK"
+  && echo "glibc binary OK" \
+  # SDK's loader tries the -musl variant first and only falls back to glibc
+  # if musl isn't resolvable. Remove the musl dir so glibc wins.
+  && rm -rf node_modules/@anthropic-ai/claude-agent-sdk-linux-x64-musl \
+  && rm -rf node_modules/@anthropic-ai/claude-code-linux-x64-musl \
+  && echo "musl variants removed"
 
 FROM node:22-slim AS build
 WORKDIR /app
