@@ -1,9 +1,11 @@
 import type { CallAnalysisResult } from './types';
 
-// Uses OpenAI's gpt-4o-mini — cheap, fast, strong enough for structured
-// call analysis. Bypass the Anthropic pay-as-you-go billing problem.
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const MODEL = 'gpt-4o-mini';
+// Uses the Anthropic Messages API directly (plain HTTP) with the
+// CLAUDE_CODE_OAUTH_TOKEN that comes from `claude setup-token`. That
+// token bills against the Max subscription — no pay-as-you-go key, no
+// SDK subprocess, no native binary.
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const MODEL = 'claude-sonnet-4-5';
 
 function systemPrompt(callType: 'intro' | 'demo' | 'other') {
   const outcomes =
@@ -35,37 +37,51 @@ export async function analyzeCallTranscript(
   transcript: string,
   callType: 'intro' | 'demo' | 'other'
 ): Promise<CallAnalysisResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY missing');
+  const oauth = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!oauth && !apiKey) {
+    throw new Error('CLAUDE_CODE_OAUTH_TOKEN (preferred) or ANTHROPIC_API_KEY missing');
+  }
 
-  const res = await fetch(OPENAI_URL, {
+  // OAuth tokens go via Authorization: Bearer. Pay-as-you-go API keys go
+  // via x-api-key. Anthropic requires the oauth-2025-04-20 beta flag for
+  // OAuth-authenticated Messages API requests.
+  const headers: Record<string, string> = {
+    'anthropic-version': '2023-06-01',
+    'content-type': 'application/json',
+  };
+  if (oauth) {
+    headers['authorization'] = `Bearer ${oauth}`;
+    headers['anthropic-beta'] = 'oauth-2025-04-20';
+  } else if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+
+  const res = await fetch(ANTHROPIC_URL, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       model: MODEL,
-      response_format: { type: 'json_object' },
-      temperature: 0.2,
-      messages: [
-        { role: 'system', content: systemPrompt(callType) },
-        { role: 'user', content: `Transcript:\n${transcript}` },
+      max_tokens: 1500,
+      system: [
+        { type: 'text', text: systemPrompt(callType), cache_control: { type: 'ephemeral' } },
       ],
+      messages: [{ role: 'user', content: `Transcript:\n${transcript}` }],
     }),
   });
 
   if (!res.ok) {
     const t = await res.text();
-    throw new Error(`OpenAI ${res.status}: ${t.slice(0, 300)}`);
+    throw new Error(`Claude API ${res.status}: ${t.slice(0, 300)}`);
   }
 
   const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    content: Array<{ type: string; text: string }>;
   };
-  const text = data.choices?.[0]?.message?.content || '';
-  if (!text) throw new Error('Empty OpenAI response');
-  return JSON.parse(text) as CallAnalysisResult;
+  const text = data.content?.map((c) => c.text).join('') || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON in Claude response');
+  return JSON.parse(match[0]) as CallAnalysisResult;
 }
 
 export const ANALYSIS_MODEL = MODEL;
