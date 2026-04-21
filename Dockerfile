@@ -4,7 +4,10 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --include=optional
+# --legacy-peer-deps: @anthropic-ai/claude-agent-sdk declares a zod@^4 peer
+# but we're on zod@3; npm ci would abort otherwise. The SDK only uses zod
+# at runtime for its own validation, so the mismatch is harmless.
+RUN npm ci --include=optional --legacy-peer-deps
 
 FROM node:22-alpine AS build
 WORKDIR /app
