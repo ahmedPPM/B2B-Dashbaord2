@@ -1,7 +1,10 @@
 FROM node:22-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# A transitive dep (fdir) requires picomatch@^3||^4, but the tree pins
+# picomatch@2.3.2 at the root. --legacy-peer-deps skips the peer check
+# so `npm ci` doesn't abort on this harmless mismatch.
+RUN npm ci --legacy-peer-deps
 
 FROM node:22-slim AS build
 WORKDIR /app
