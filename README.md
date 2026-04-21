@@ -31,7 +31,8 @@ Run the SQL at `supabase/schema.sql` in the Supabase SQL editor.
 
 ## Cron
 
-Cron routes are defined in `vercel.json`. Each one is guarded by `Bearer ${CRON_SECRET}`.
+Cron jobs are orchestrated by the `ppm-cron` Railway service (see `cron-runner/`).
+Each sync endpoint is guarded by `Bearer ${CRON_SECRET}`.
 
 ## Structure
 
