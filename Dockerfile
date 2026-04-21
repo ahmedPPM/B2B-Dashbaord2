@@ -4,10 +4,16 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-# --legacy-peer-deps: @anthropic-ai/claude-agent-sdk declares a zod@^4 peer
-# but we're on zod@3; npm ci would abort otherwise. The SDK only uses zod
-# at runtime for its own validation, so the mismatch is harmless.
-RUN npm ci --include=optional --legacy-peer-deps
+# --legacy-peer-deps: Agent SDK declares zod@^4, project is on zod@3.
+# --force + explicit libc/os env: npm on Alpine can report libc=null which
+# causes it to skip the musl-specific binary package. Forcing the env
+# makes sure it installs even if auto-detection fails.
+ENV npm_config_libc=musl
+ENV npm_config_os=linux
+ENV npm_config_cpu=x64
+RUN npm ci --include=optional --legacy-peer-deps --force \
+  && test -f node_modules/@anthropic-ai/claude-agent-sdk-linux-x64-musl/claude \
+  && echo "musl binary OK"
 
 FROM node:22-alpine AS build
 WORKDIR /app
