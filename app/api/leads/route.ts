@@ -24,39 +24,44 @@ export async function GET(req: Request) {
   let leads = data || [];
 
   // Attach Hyros attribution + is_paid_ad to each lead.
-  // Try to include in_hyros_list; if the column doesn't exist yet (migration
-  // pending) the query returns an error — fall back to the column-safe select.
   const emails = leads.map((l) => (l.email || '').toLowerCase()).filter(Boolean);
-  let { data: hyrosRows, error: hyrosErr } = await supa
-    .from('hyros_attribution')
-    .select('email, is_paid_ad, in_hyros_list, traffic_source, ad_platform, ad_name, revenue_attributed, organic')
-    .in('email', emails);
-  if (hyrosErr) {
-    // Column likely missing — fall back without in_hyros_list
-    const fallback = await supa
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let hyrosRows: any[] | null = null;
+  try {
+    const r1 = await supa
       .from('hyros_attribution')
-      .select('email, is_paid_ad, traffic_source, ad_platform, ad_name, revenue_attributed, organic')
+      .select('email, is_paid_ad, in_hyros_list, traffic_source, ad_platform, ad_name, revenue_attributed, organic')
       .in('email', emails);
-    hyrosRows = fallback.data;
-  }
-  const hyrosByEmail = new Map((hyrosRows || []).map((r) => [r.email, r]));
+    if (!r1.error) {
+      hyrosRows = r1.data;
+    } else {
+      // in_hyros_list column missing — fall back to column-safe select
+      const r2 = await supa
+        .from('hyros_attribution')
+        .select('email, is_paid_ad, traffic_source, ad_platform, ad_name, revenue_attributed, organic')
+        .in('email', emails);
+      hyrosRows = r2.data;
+    }
+  } catch { /* leave hyrosRows null */ }
+  const hyrosByEmail = new Map((hyrosRows || []).map((r: any) => [r.email, r]));
 
   leads = leads.map((l) => {
-    const h = hyrosByEmail.get((l.email || '').toLowerCase()) as Record<string, unknown> | undefined;
+    const h = hyrosByEmail.get((l.email || '').toLowerCase());
     // hyros_paid = in_hyros_list once the column exists and is seeded.
     // Falls back to is_paid_ad until the migration runs.
-    const inList = h != null && 'in_hyros_list' in h ? !!(h.in_hyros_list) : null;
-    const hyrosPaid = inList !== null ? inList : !!(h?.is_paid_ad);
+    const hyrosPaid = h
+      ? ('in_hyros_list' in h ? !!(h.in_hyros_list) : !!(h.is_paid_ad))
+      : false;
     const ghlPaid = !!l.campaign_id;
     const sourceLooksPaid = /facebook|meta|google|tiktok|youtube|instagram/i.test(l.lead_source || '');
     const is_paid_ad = hyrosPaid || !!(h?.is_paid_ad) || ghlPaid || sourceLooksPaid;
     return {
       ...l,
       hyros_paid: hyrosPaid,
-      hyros_traffic_source: (h?.traffic_source as string) || null,
-      hyros_ad_platform: (h?.ad_platform as string) || null,
-      hyros_ad_name: (h?.ad_name as string) || null,
-      hyros_revenue: (h?.revenue_attributed as number) || 0,
+      hyros_traffic_source: h?.traffic_source || null,
+      hyros_ad_platform: h?.ad_platform || null,
+      hyros_ad_name: h?.ad_name || null,
+      hyros_revenue: h?.revenue_attributed || 0,
       is_paid_ad,
     };
   });
