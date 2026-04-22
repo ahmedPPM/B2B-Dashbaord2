@@ -124,28 +124,38 @@ export async function GET(req: Request) {
   const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const toDate = new Date().toISOString().slice(0, 10);
 
+  // Always seed the hardcoded cohort first — this runs even if the Hyros API fails.
+  const { marked: seedMarked, errors: seedErrors } = await markEmails(supa, SEED_EMAILS);
+
   let hyrosLeads: Awaited<ReturnType<typeof hyros.listLeads>> = [];
+  let apiError: string | null = null;
   try {
     hyrosLeads = await hyros.listLeads({ fromDate, toDate });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: `hyros listLeads: ${String(e)}` }, { status: 500 });
+    apiError = String(e);
   }
 
-  const hyrosEmails = hyrosLeads
-    .map((l) => (l.email || '').toLowerCase().trim())
-    .filter((e) => e.includes('@'));
-
-  // Always include the seed list so the initial cohort is never dropped.
-  const allEmails = [...new Set([...hyrosEmails, ...SEED_EMAILS])];
-  const { marked, errors } = await markEmails(supa, allEmails);
+  let apiMarked = 0;
+  const apiErrors: string[] = [];
+  if (hyrosLeads.length) {
+    const hyrosEmails = hyrosLeads
+      .map((l) => (l.email || '').toLowerCase().trim())
+      .filter((e) => e.includes('@'));
+    const res = await markEmails(supa, hyrosEmails);
+    apiMarked = res.marked;
+    apiErrors.push(...res.errors);
+  }
 
   return NextResponse.json({
     ok: true,
     from: fromDate,
     to: toDate,
+    seed_marked: seedMarked,
+    seed_errors: seedErrors.slice(0, 10),
     hyros_api_leads: hyrosLeads.length,
-    total_marked: marked,
-    errors: errors.slice(0, 20),
+    api_marked: apiMarked,
+    api_error: apiError,
+    errors: apiErrors.slice(0, 10),
   });
 }
 
