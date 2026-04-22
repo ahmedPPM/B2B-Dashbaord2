@@ -27,17 +27,19 @@ export async function GET(req: Request) {
   const emails = leads.map((l) => (l.email || '').toLowerCase()).filter(Boolean);
   const { data: hyrosRows } = await supa
     .from('hyros_attribution')
-    .select('email, is_paid_ad, traffic_source, ad_platform, ad_name, revenue_attributed, organic')
+    .select('email, is_paid_ad, in_hyros_list, traffic_source, ad_platform, ad_name, revenue_attributed, organic')
     .in('email', emails);
   const hyrosByEmail = new Map((hyrosRows || []).map((r) => [r.email, r]));
 
   leads = leads.map((l) => {
     const h = hyrosByEmail.get((l.email || '').toLowerCase());
-    // Paid = hyros says paid, OR GHL has a campaign_id, OR lead_source mentions a known paid platform
-    const hyrosPaid = !!h?.is_paid_ad;
+    // hyros_paid = true when this lead appears in Hyros's leads list.
+    // This is what drives the Hyros mode filter — strictly the cohort Hyros
+    // reported, not a loose "paid platform" heuristic.
+    const hyrosPaid = !!(h?.in_hyros_list);
     const ghlPaid = !!l.campaign_id;
     const sourceLooksPaid = /facebook|meta|google|tiktok|youtube|instagram/i.test(l.lead_source || '');
-    const is_paid_ad = hyrosPaid || ghlPaid || sourceLooksPaid;
+    const is_paid_ad = hyrosPaid || !!(h?.is_paid_ad) || ghlPaid || sourceLooksPaid;
     return {
       ...l,
       hyros_paid: hyrosPaid,

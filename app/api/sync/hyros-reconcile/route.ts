@@ -45,6 +45,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, from: fromDate, to: toDate, hyros_leads: 0, recovered: 0, orphans: [] });
   }
 
+  // Mark every email Hyros reported as in_hyros_list=true so Hyros mode
+  // filters to exactly the cohort Hyros knows about.
+  for (const email of hyrosEmails) {
+    await supa
+      .from('hyros_attribution')
+      .upsert({ email, in_hyros_list: true, synced_at: new Date().toISOString() }, { onConflict: 'email' });
+  }
+
   // Which Hyros emails already live in our DB?
   const { data: known } = await supa.from('leads').select('email').in('email', hyrosEmails);
   const knownSet = new Set((known || []).map((r) => (r.email || '').toLowerCase()));
