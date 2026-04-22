@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { BarChart3, Waves, Clapperboard, ArrowUpRight } from 'lucide-react';
+import { BarChart3, Waves, Clapperboard, Target, ArrowUpRight } from 'lucide-react';
 
 export default function Home() {
   const apps = [
@@ -34,6 +34,16 @@ export default function Home() {
       iconWrap: 'bg-violet-500/15 text-violet-300 ring-violet-500/30',
       external: true,
     },
+    {
+      href: 'https://ppm-b2b-dashboard-pool-outreach.up.railway.app/',
+      title: 'ICP Intelligence',
+      tag: 'Pool Outreach',
+      desc: 'Identify ideal customer profiles, enrich pool leads, and launch targeted outreach campaigns at scale.',
+      icon: Target,
+      accent: 'from-orange-500/70 to-orange-500/10',
+      iconWrap: 'bg-orange-500/15 text-orange-300 ring-orange-500/30',
+      external: true,
+    },
   ];
 
   return (
@@ -61,14 +71,14 @@ export default function Home() {
             Premier Pool Marketing
           </div>
           <h1 className="text-balance text-4xl font-semibold tracking-tight md:text-5xl">
-            Welcome back, <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Anas</span>
+            Welcome back, <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">sir</span>
           </h1>
           <p className="mt-3 max-w-xl text-sm text-zinc-400 md:text-base">
             One control panel for the whole operation — pick where to go.
           </p>
         </div>
 
-        <div className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {apps.map((a) => {
             const Icon = a.icon;
             const body = (
