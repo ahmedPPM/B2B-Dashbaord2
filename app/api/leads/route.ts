@@ -47,11 +47,11 @@ export async function GET(req: Request) {
 
   leads = leads.map((l) => {
     const h = hyrosByEmail.get((l.email || '').toLowerCase());
-    // hyros_paid = in_hyros_list once the column exists and is seeded.
-    // Falls back to is_paid_ad until the migration runs.
-    const hyrosPaid = h
-      ? ('in_hyros_list' in h ? !!(h.in_hyros_list) : !!(h.is_paid_ad))
-      : false;
+    // hyros_paid = true when:
+    //   a) lead is in the seeded Hyros list (in_hyros_list === true), OR
+    //   b) column is absent/false → fall back to is_paid_ad (keeps dashboard
+    //      functional before/while the seed is being applied)
+    const hyrosPaid = h?.in_hyros_list === true ? true : !!(h?.is_paid_ad);
     const ghlPaid = !!l.campaign_id;
     const sourceLooksPaid = /facebook|meta|google|tiktok|youtube|instagram/i.test(l.lead_source || '');
     const is_paid_ad = hyrosPaid || !!(h?.is_paid_ad) || ghlPaid || sourceLooksPaid;
