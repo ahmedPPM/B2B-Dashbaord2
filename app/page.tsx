@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { BarChart3, Waves, Clapperboard, Target, Briefcase, Activity, ClipboardList, ArrowUpRight } from 'lucide-react';
+import { BarChart3, Waves, Clapperboard, Target, Briefcase, Activity, ClipboardList, TrendingUp, ArrowUpRight } from 'lucide-react';
 
 export default function Home() {
   const apps = [
@@ -72,6 +72,16 @@ export default function Home() {
       icon: ClipboardList,
       accent: 'from-rose-500/70 to-rose-500/10',
       iconWrap: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
+      external: true,
+    },
+    {
+      href: 'https://ppm-seo-ops-production.up.railway.app/',
+      title: 'SEO Operations',
+      tag: 'SEO',
+      desc: 'Search engine optimisation operations hub — track rankings, manage content, and monitor organic growth.',
+      icon: TrendingUp,
+      accent: 'from-lime-500/70 to-lime-500/10',
+      iconWrap: 'bg-lime-500/15 text-lime-300 ring-lime-500/30',
       external: true,
     },
   ];
