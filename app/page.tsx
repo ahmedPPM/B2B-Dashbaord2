@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { BarChart3, Waves, Clapperboard, Target, Briefcase, ArrowUpRight } from 'lucide-react';
+import { BarChart3, Waves, Clapperboard, Target, Briefcase, Activity, ClipboardList, ArrowUpRight } from 'lucide-react';
 
 export default function Home() {
   const apps = [
@@ -52,6 +52,26 @@ export default function Home() {
       icon: Briefcase,
       accent: 'from-amber-500/70 to-amber-500/10',
       iconWrap: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
+      external: true,
+    },
+    {
+      href: 'https://make-ops-manager-production.up.railway.app',
+      title: 'Make Scenario Monitor',
+      tag: 'Automations',
+      desc: 'Live health monitor for all 28 Make.com scenarios — GPT-4o error analysis, Slack alerts, and execution history.',
+      icon: Activity,
+      accent: 'from-cyan-500/70 to-cyan-500/10',
+      iconWrap: 'bg-cyan-500/15 text-cyan-300 ring-cyan-500/30',
+      external: true,
+    },
+    {
+      href: 'https://ppm-onboard-production.up.railway.app',
+      title: 'Client Onboarding',
+      tag: 'Onboarding',
+      desc: 'GHL onboarding intake system — parse client forms, auto-configure pipelines, and kick off new client workflows.',
+      icon: ClipboardList,
+      accent: 'from-rose-500/70 to-rose-500/10',
+      iconWrap: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
       external: true,
     },
   ];
