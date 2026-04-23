@@ -47,11 +47,10 @@ export async function GET(req: Request) {
 
   leads = leads.map((l) => {
     const h = hyrosByEmail.get((l.email || '').toLowerCase());
-    // hyros_paid = true when:
-    //   a) lead is in the seeded Hyros list (in_hyros_list === true), OR
-    //   b) column is absent/false → fall back to is_paid_ad (keeps dashboard
-    //      functional before/while the seed is being applied)
-    const hyrosPaid = h?.in_hyros_list === true ? true : !!(h?.is_paid_ad);
+    // hyros_paid = strictly in_hyros_list (Marketing for Premier Pool FB account only).
+    // No fallback — the seed is populated, so only the 83 confirmed PPM leads show
+    // in Hyros mode. is_paid_ad remains available for Ads mode.
+    const hyrosPaid = h?.in_hyros_list === true;
     const ghlPaid = !!l.campaign_id;
     const sourceLooksPaid = /facebook|meta|google|tiktok|youtube|instagram/i.test(l.lead_source || '');
     const is_paid_ad = hyrosPaid || !!(h?.is_paid_ad) || ghlPaid || sourceLooksPaid;
