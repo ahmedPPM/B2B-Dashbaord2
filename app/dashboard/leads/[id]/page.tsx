@@ -97,7 +97,7 @@ export default function LeadDetailPage() {
   const introCalIds = (process.env.NEXT_PUBLIC_GHL_INTRO_CALENDAR_IDS || '0cPxjhApUzQ83lW2bQmt,vgek7QKnwcUvQcNIbepL').split(',');
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-5xl w-full">
       <div className="flex items-center justify-between">
         <Link href="/dashboard/leads" className="text-sm text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" />All leads
@@ -119,18 +119,22 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      <div className="card p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1">
+      <div className="card p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+          <div className="flex-1 min-w-0">
             <EditableText value={lead.lead_name || ''} onSave={(v) => savePatch({ lead_name: v })} className="text-xl font-semibold" placeholder="Name" />
-            <div className="flex items-center gap-3 mt-1 text-sm text-zinc-400">
-              <Mail className="w-3.5 h-3.5" />
-              <EditableText value={lead.email || ''} onSave={(v) => savePatch({ email: v.toLowerCase() })} placeholder="email" />
-              <Phone className="w-3.5 h-3.5" />
-              <EditableText value={lead.phone || ''} onSave={(v) => savePatch({ phone: v })} placeholder="phone" />
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-zinc-400">
+              <span className="flex items-center gap-1.5 min-w-0">
+                <Mail className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate"><EditableText value={lead.email || ''} onSave={(v) => savePatch({ email: v.toLowerCase() })} placeholder="email" /></span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 shrink-0" />
+                <EditableText value={lead.phone || ''} onSave={(v) => savePatch({ phone: v })} placeholder="phone" />
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <ScoreBadge score={lead.app_grading} />
             <StagePill stage={lead.pipeline_stage} name={(lead as Lead & { stage_name?: string; pipeline_name?: string }).stage_name} />
           </div>

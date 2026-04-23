@@ -119,7 +119,7 @@ export default function CallsPage() {
 
       <div className="grid lg:grid-cols-[minmax(0,1fr),minmax(0,1.3fr)] gap-4">
         {/* Leads list */}
-        <div className="card overflow-hidden max-h-[calc(100vh-300px)] overflow-y-auto">
+        <div className="card overflow-x-auto overflow-y-auto max-h-[calc(100vh-300px)]">
           <table className="w-full text-sm">
             <thead className="bg-zinc-900/60 border-b border-zinc-800 sticky top-0 z-10">
               <tr>
