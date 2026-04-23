@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Users, Settings, Waves, History, BarChart3, Calendar, Phone, Trophy, Target, CheckCircle2, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, Waves, History, BarChart3, Calendar, Phone, Trophy, Target, CheckCircle2, Menu, X, Users2, Activity as ActivityIcon, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AdsOnlyProvider, useAdsOnly } from '@/lib/ads-only-context';
 
@@ -14,6 +14,9 @@ const NAV = [
   { href: '/dashboard/calls', label: 'Calls', icon: Phone },
   { href: '/dashboard/clients', label: 'Won Clients', icon: Trophy },
   { href: '/dashboard/ads', label: 'Ads Performance', icon: BarChart3 },
+  { href: '/dashboard/closers', label: 'Closers', icon: Users2 },
+  { href: '/dashboard/activity', label: 'Activity', icon: ActivityIcon },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings2 },
   { href: '/dashboard/admin/activity', label: 'Activity Log', icon: History },
   { href: '/dashboard/admin/backfill', label: 'Backfill Admin', icon: Settings },
 ];

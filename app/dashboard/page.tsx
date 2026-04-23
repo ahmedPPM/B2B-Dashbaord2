@@ -13,6 +13,31 @@ import { LeadTable } from '@/components/lead-table';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 import Link from 'next/link';
 import { Table, List } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from 'recharts';
+
+interface OverviewData {
+  leadsByDay: { date: string; count: number }[];
+  cplTrend: { date: string; spend: number; leads: number; cpl: number }[];
+  leadsBySource: { source: string; count: number }[];
+  leadsByPlacement: { placement: string; count: number }[];
+  bestCampaignsByCpl: { campaign: string; spend: number; leads: number; cpl: number }[];
+  newestLeads: { id: string; lead_name: string | null; email: string | null; date_opted_in: string | null; pipeline_stage: string | null; campaign_name: string | null }[];
+  upcomingCalls: { type: 'intro' | 'demo'; booked_for: string; lead_name: string | null; closer: string | null; lead_id: string }[];
+  cashCollected: number;
+  cashInvoiced: number;
+}
+
+const tooltipStyle = { background: '#18181b', border: '1px solid #3f3f46', color: '#f4f4f5' };
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function daysAgo(n: number) { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10); }
@@ -41,10 +66,14 @@ export default function DashboardPage() {
   const [rangeIdx, setRangeIdx] = useState(2); // default MTD
   const [view, setView] = useState<'summary' | 'leads'>('leads');
   const [loaded, setLoaded] = useState(false);
+  const [overview, setOverview] = useState<OverviewData | null>(null);
   const { mode } = useAdsOnly();
 
   useEffect(() => {
     let cancelled = false;
+    const r = DATE_RANGES[rangeIdx] || DATE_RANGES[3];
+    const fromDate = r.from();
+    const toDate = r.to();
     (async () => {
       try {
         const [leadsRes, spendRes] = await Promise.all([
@@ -62,6 +91,12 @@ export default function DashboardPage() {
         if (!cancelled) setLoaded(true);
       }
     })();
+
+    // Fetch overview data
+    fetch(`/api/stats/overview?from=${fromDate}&to=${toDate}&mode=${mode}`)
+      .then((r) => r.json())
+      .then((json) => { if (!cancelled) setOverview(json); })
+      .catch(console.error);
 
     // Realtime subscription
     let channel: ReturnType<ReturnType<typeof supabaseBrowser>['channel']> | null = null;
@@ -83,7 +118,8 @@ export default function DashboardPage() {
         try { channel.unsubscribe(); } catch { /* ignore */ }
       }
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rangeIdx, mode]);
 
   const range = useMemo(() => dateRange(rangeIdx), [rangeIdx]);
 
@@ -271,6 +307,160 @@ export default function DashboardPage() {
         <KpiCard label="Instant-Convert Intros" value={kpis.instantConvertIntros} />
         <KpiCard label="Setter Conversion Rate" value={formatPercent(kpis.setterConversionRate)} />
       </div>
+
+      {/* Charts + Tables row */}
+      {overview && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Lead Generation chart */}
+            <div className="card p-4">
+              <div className="text-sm font-medium text-zinc-100 mb-3">Lead Generation</div>
+              {overview.leadsByDay.length === 0 ? (
+                <div className="text-zinc-500 text-sm">No data for this period.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={overview.leadsByDay}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v: string) => v.slice(5)} interval="preserveStartEnd" />
+                    <YAxis tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                    <Bar dataKey="count" name="Leads" fill="#10b981" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* CPL Trend chart */}
+            <div className="card p-4">
+              <div className="text-sm font-medium text-zinc-100 mb-3">CPL Trend</div>
+              {overview.cplTrend.length === 0 ? (
+                <div className="text-zinc-500 text-sm">No data for this period.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={overview.cplTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v: string) => v.slice(5)} interval="preserveStartEnd" />
+                    <YAxis tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(0)}`} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`$${v.toFixed(2)}`, 'CPL']} />
+                    <Line dataKey="cpl" name="CPL" stroke="#38bdf8" dot={false} strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom 4-column tables */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {/* Leads by Source */}
+            <div className="card p-4">
+              <div className="text-xs uppercase tracking-wider text-zinc-500 mb-3">By Source</div>
+              <div className="space-y-2">
+                {overview.leadsBySource.slice(0, 8).map((s) => (
+                  <div key={s.source} className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-zinc-400 truncate">{s.source}</span>
+                    <span className="text-xs font-medium text-zinc-100 shrink-0">{s.count}</span>
+                  </div>
+                ))}
+                {overview.leadsBySource.length === 0 && <div className="text-xs text-zinc-500">No data</div>}
+              </div>
+            </div>
+
+            {/* Leads by Placement */}
+            <div className="card p-4">
+              <div className="text-xs uppercase tracking-wider text-zinc-500 mb-3">By Placement</div>
+              <div className="space-y-2">
+                {overview.leadsByPlacement.slice(0, 8).map((p) => (
+                  <div key={p.placement} className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-zinc-400 truncate">{p.placement}</span>
+                    <span className="text-xs font-medium text-zinc-100 shrink-0">{p.count}</span>
+                  </div>
+                ))}
+                {overview.leadsByPlacement.length === 0 && <div className="text-xs text-zinc-500">No data</div>}
+              </div>
+            </div>
+
+            {/* Best Campaigns by CPL */}
+            <div className="card p-4">
+              <div className="text-xs uppercase tracking-wider text-zinc-500 mb-3">Best CPL</div>
+              <div className="space-y-2">
+                {overview.bestCampaignsByCpl.slice(0, 8).map((c) => (
+                  <div key={c.campaign} className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-zinc-400 truncate">{c.campaign}</span>
+                    <span className="text-xs font-medium text-emerald-400 shrink-0">{formatCurrency(c.cpl)}</span>
+                  </div>
+                ))}
+                {overview.bestCampaignsByCpl.length === 0 && <div className="text-xs text-zinc-500">No data</div>}
+              </div>
+            </div>
+
+            {/* Newest Leads */}
+            <div className="card p-4">
+              <div className="text-xs uppercase tracking-wider text-zinc-500 mb-3">Newest Leads</div>
+              <div className="space-y-2">
+                {overview.newestLeads.map((l) => (
+                  <div key={l.id} className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-zinc-300 truncate">{l.lead_name || '—'}</div>
+                      <div className="text-xs text-zinc-500 truncate">{l.pipeline_stage || '—'}</div>
+                    </div>
+                    <span className="text-xs text-zinc-600 shrink-0">
+                      {l.date_opted_in ? new Date(l.date_opted_in).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                    </span>
+                  </div>
+                ))}
+                {overview.newestLeads.length === 0 && <div className="text-xs text-zinc-500">No data</div>}
+              </div>
+            </div>
+          </div>
+
+          {/* Upcoming Calls + Cash row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Upcoming Calls */}
+            <div className="card p-4 lg:col-span-2">
+              <div className="text-sm font-medium text-zinc-100 mb-3">Upcoming Calls (14 days)</div>
+              {overview.upcomingCalls.length === 0 ? (
+                <div className="text-zinc-500 text-sm">No upcoming calls.</div>
+              ) : (
+                <div className="space-y-2">
+                  {overview.upcomingCalls.map((call, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${call.type === 'intro' ? 'bg-violet-500/20 text-violet-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                        {call.type}
+                      </span>
+                      <span className="text-sm text-zinc-200 truncate flex-1">{call.lead_name || '—'}</span>
+                      <span className="text-xs text-zinc-500 shrink-0">{call.closer || '—'}</span>
+                      <span className="text-xs text-zinc-600 shrink-0">
+                        {new Date(call.booked_for).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Cash section */}
+            <div className="card p-4 space-y-4">
+              <div className="text-sm font-medium text-zinc-100">Cash Overview</div>
+              <div>
+                <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Total Collected</div>
+                <div className="text-2xl font-semibold text-emerald-400">{formatCurrency(overview.cashCollected)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Contracted MRR</div>
+                <div className="text-2xl font-semibold text-zinc-100">{formatCurrency(overview.cashInvoiced)}</div>
+              </div>
+              {overview.cashInvoiced > 0 && (
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Collection Rate</div>
+                  <div className="text-lg font-semibold text-sky-400">
+                    {formatPercent((overview.cashCollected / overview.cashInvoiced) * 100)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* View toggle */}
       <div className="flex items-center gap-2">

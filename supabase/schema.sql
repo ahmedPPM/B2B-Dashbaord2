@@ -205,3 +205,20 @@ ALTER TABLE hyros_attribution ENABLE ROW LEVEL SECURITY;
 do $$ begin
   CREATE POLICY "authed read hyros" ON hyros_attribution FOR SELECT TO authenticated USING (true);
 exception when duplicate_object then null; end $$;
+
+-- =======================================================
+-- lead_comments
+-- =======================================================
+CREATE TABLE IF NOT EXISTS lead_comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  author TEXT DEFAULT 'Anas',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lead_comments_lead_id ON lead_comments(lead_id);
+ALTER TABLE lead_comments ENABLE ROW LEVEL SECURITY;
+do $$ begin
+  CREATE POLICY "authed read comments" ON lead_comments FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "authed insert comments" ON lead_comments FOR INSERT TO authenticated WITH CHECK (true);
+exception when duplicate_object then null; end $$;
