@@ -23,8 +23,15 @@ const JUNK_EMAILS = new Set([
   'letsgo44@gmail.com',
 ]);
 
-// Seed: all valid PPM-account leads confirmed for April 2026 (sync keeps this fresh)
+// Seed: all valid PPM-account leads confirmed for the reporting period
 const SEED_EMAILS = [
+  // April 23
+  'info@mazzeoconstructioncc.com',
+  'donza85@aol.com',
+  'hicksjonathan60@gmail.com',
+  'alliedprosol@outlook.com',
+  'connect@lazydazepools.com',
+  'michelle@livingwaterpoolsandspas.com',
   // April 22-23
   'errol@puddlepools.com',
   'acrllc@yahoo.com',
@@ -69,6 +76,7 @@ const SEED_EMAILS = [
   'shawn@championpoolsandoutdoorliving.com',
   'gghani@newaypools.com',
   'devinlindholm77@gmail.com',
+  'ajace0617@gmail.com',
   'tropicalbreezecustompools@outlook.com',
   'josh@radiantbuilders.com',
   'addison@adexteriordesigns.com',
@@ -115,11 +123,18 @@ const SEED_EMAILS = [
   'tommyddelong@gmail.com',
   'gary@texaspoolwhisperer.com',
   // April 9
+  'info@rightwiseenterprises.com',
   'holidaycustompools@gmail.com',
   'poolprosllc302@gmail.com',
+  // April 8
+  'johnle3034@yahoo.com',
   // April 7
   'colt@uspoolbuilder.com',
+  'jason@boydpools.com',
   'heathglennerster@gmail.com',
+  // April 6
+  'thiago@greenvalueprop.com',
+  'infinitypoolsandspa318@gmail.com',
 ];
 
 function isPPMLead(lead: Record<string, unknown>): boolean {
