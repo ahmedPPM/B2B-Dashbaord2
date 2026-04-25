@@ -21,6 +21,7 @@ const JUNK_EMAILS = new Set([
   'hello@adsgorithm.com',
   'bdbsbd@gnan.com',
   'letsgo44@gmail.com',
+  'unlimitedhardscalesllc@gmail.com', // typo in Hyros; correct email is unlimitedhardscapesllc@gmail.com (already in seed)
 ]);
 
 // Seed: all valid PPM-account leads confirmed for the reporting period

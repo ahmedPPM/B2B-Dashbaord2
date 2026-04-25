@@ -7,6 +7,9 @@ export const maxDuration = 300;
 // Diagnostic: pull Hyros leads for a given month, show breakdown by goal/source/platform,
 // cross-reference with DB, and identify missing leads.
 // GET /api/admin/hyros-diagnose?from=2026-04-01&to=2026-04-30&manual=1
+//
+// Uses the same strict PPM FB account filter as hyros-list so counts match exactly.
+const PPM_FB_ACCOUNT_ID = '696535455232096';
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -38,6 +41,7 @@ export async function GET(req: Request) {
       traffic_source: (src as Record<string, { name?: string }>).trafficSource?.name || null,
       platform: (src as Record<string, { platform?: string; adSourceId?: string }>).adSource?.platform || null,
       ad_source_id: (src as Record<string, { adSourceId?: string }>).adSource?.adSourceId || null,
+      ad_account_id: (src as Record<string, { adAccountId?: string }>).adSource?.adAccountId || null,
       organic: (src as Record<string, boolean>).organic || false,
       category: (src as Record<string, { name?: string }>).category?.name || null,
     };
@@ -56,19 +60,8 @@ export async function GET(req: Request) {
     sourceCounts.set(s, (sourceCounts.get(s) || 0) + 1);
   }
 
-  // 4. PPM Meta filter — leads where:
-  //    goal includes "premier" OR "ppm" OR "marketing for premier"
-  //    OR platform is facebook/meta
-  //    AND NOT organic
-  const ppmLeads = withSource.filter((l) => {
-    if (l.organic) return false;
-    const goalLower = (l.goal || '').toLowerCase();
-    const sourceLower = (l.traffic_source || '').toLowerCase();
-    const platformLower = (l.platform || '').toLowerCase();
-    const isPPMGoal = goalLower.includes('premier') || goalLower.includes('ppm') || goalLower.includes('marketing for premier');
-    const isMeta = platformLower.includes('facebook') || platformLower.includes('meta') || sourceLower.includes('facebook') || sourceLower.includes('meta');
-    return isPPMGoal || isMeta;
-  });
+  // 4. PPM filter — strict account ID match (same as hyros-list route)
+  const ppmLeads = withSource.filter((l) => l.ad_account_id === PPM_FB_ACCOUNT_ID);
 
   // 5. Cross-reference with DB
   const supa = supabaseAdmin();
