@@ -92,11 +92,12 @@ export async function GET(req: Request) {
   let recoveredFromHyros = 0;
   const orphans: Array<{ email: string; reason: string }> = [];
 
-  // Build a map of Hyros lead data keyed by email for orphan fallback
+  // Build a map of ALL Hyros leads keyed by email for orphan fallback.
+  // We use all leads (not just PPM-filtered) because some seed emails may have
+  // shifted attribution in Hyros; the in_hyros_list seed is already manually
+  // curated so we trust it.
   const hyrosLeadByEmail = new Map(
-    hyrosLeads
-      .filter(isPPMLead)
-      .map((l) => [(l.email || '').toLowerCase().trim(), l])
+    hyrosLeads.map((l) => [(l.email || '').toLowerCase().trim(), l])
   );
 
   for (const email of missingEmails) {
@@ -125,7 +126,7 @@ export async function GET(req: Request) {
           recoveredFromHyros++;
         }
       } else {
-        orphans.push({ email, reason: 'not in GHL, not PPM account in Hyros' });
+        orphans.push({ email, reason: 'not in GHL, not found in Hyros data' });
       }
     } catch (e) {
       orphans.push({ email, reason: `error: ${String(e).slice(0, 120)}` });
