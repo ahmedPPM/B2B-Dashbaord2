@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { BarChart3, Waves, Clapperboard, Target, Briefcase, Activity, ClipboardList, TrendingUp, ArrowUpRight } from 'lucide-react';
+import { BarChart3, Waves, Clapperboard, Target, Activity, ClipboardList, TrendingUp, ArrowUpRight } from 'lucide-react';
 
 export default function Home() {
   const apps = [
@@ -42,16 +42,6 @@ export default function Home() {
       icon: Target,
       accent: 'from-orange-500/70 to-orange-500/10',
       iconWrap: 'bg-orange-500/15 text-orange-300 ring-orange-500/30',
-      external: true,
-    },
-    {
-      href: 'https://ops-board-production.up.railway.app/',
-      title: 'Operations Board',
-      tag: 'Ops Tools',
-      desc: 'Ahmed & Anas operational toolkit — tasks, workflows, and internal processes in one place.',
-      icon: Briefcase,
-      accent: 'from-amber-500/70 to-amber-500/10',
-      iconWrap: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
       external: true,
     },
     {
