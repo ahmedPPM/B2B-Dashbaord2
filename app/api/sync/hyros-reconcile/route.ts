@@ -1,9 +1,38 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { hyros } from '@/lib/hyros';
+import { hyros, type HyrosLead } from '@/lib/hyros';
 import { ghl } from '@/lib/ghl';
 import { mapContactToLead } from '@/lib/backfill';
 import { requireCron } from '@/lib/api-auth';
+
+const PPM_FB_ACCOUNT_ID = '696535455232096';
+
+function isPPMLead(lead: HyrosLead): boolean {
+  const src = (lead.firstSource || lead.lastSource || {}) as Record<string, unknown>;
+  const adSource = (src.adSource || {}) as Record<string, string>;
+  return adSource.adAccountId === PPM_FB_ACCOUNT_ID;
+}
+
+function mapHyrosOrphanToLead(lead: HyrosLead): Record<string, unknown> {
+  const email = (lead.email || '').toLowerCase().trim();
+  const src = (lead.firstSource || lead.lastSource || {}) as Record<string, unknown>;
+  const adSource = (src.adSource || {}) as Record<string, string>;
+  const sourceLinkAd = (src.sourceLinkAd || {}) as Record<string, string>;
+  const trafficSource = (src.trafficSource || {}) as Record<string, string>;
+  const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || null;
+  const phone = Array.isArray(lead.phoneNumbers) && lead.phoneNumbers.length ? lead.phoneNumbers[0] : null;
+  return {
+    ghl_contact_id: `hyros:${email}`,
+    email,
+    lead_name: name,
+    phone: phone || null,
+    date_opted_in: lead.creationDate || new Date().toISOString(),
+    lead_source: trafficSource.name || adSource.platform || 'facebook',
+    campaign_name: sourceLinkAd.name || null,
+    backfilled: true,
+    updated_at: new Date().toISOString(),
+  };
+}
 
 export const maxDuration = 300;
 
@@ -60,25 +89,46 @@ export async function GET(req: Request) {
   const missingEmails = hyrosEmails.filter((e) => !knownSet.has(e));
 
   let recovered = 0;
+  let recoveredFromHyros = 0;
   const orphans: Array<{ email: string; reason: string }> = [];
+
+  // Build a map of Hyros lead data keyed by email for orphan fallback
+  const hyrosLeadByEmail = new Map(
+    hyrosLeads
+      .filter(isPPMLead)
+      .map((l) => [(l.email || '').toLowerCase().trim(), l])
+  );
 
   for (const email of missingEmails) {
     try {
       const { contacts } = await ghl.searchContactByEmail(email);
       const c = contacts?.[0];
-      if (!c?.id) {
-        orphans.push({ email, reason: 'not in GHL' });
+      if (c?.id) {
+        const row = mapContactToLead(c);
+        const { error } = await supa.from('leads').upsert(row, { onConflict: 'ghl_contact_id' });
+        if (error) {
+          orphans.push({ email, reason: `upsert failed: ${error.message}` });
+        } else {
+          recovered++;
+        }
         continue;
       }
-      const row = mapContactToLead(c);
-      const { error } = await supa.from('leads').upsert(row, { onConflict: 'ghl_contact_id' });
-      if (error) {
-        orphans.push({ email, reason: `upsert failed: ${error.message}` });
+
+      // Not in GHL — if it's a confirmed PPM lead, upsert from Hyros data directly
+      const hyrosLead = hyrosLeadByEmail.get(email);
+      if (hyrosLead) {
+        const row = mapHyrosOrphanToLead(hyrosLead);
+        const { error } = await supa.from('leads').upsert(row, { onConflict: 'ghl_contact_id' });
+        if (error) {
+          orphans.push({ email, reason: `hyros upsert failed: ${error.message}` });
+        } else {
+          recoveredFromHyros++;
+        }
       } else {
-        recovered++;
+        orphans.push({ email, reason: 'not in GHL, not PPM account in Hyros' });
       }
     } catch (e) {
-      orphans.push({ email, reason: `ghl search error: ${String(e).slice(0, 120)}` });
+      orphans.push({ email, reason: `error: ${String(e).slice(0, 120)}` });
     }
   }
 
@@ -90,6 +140,7 @@ export async function GET(req: Request) {
     hyros_unique_emails: hyrosEmails.length,
     already_in_db: hyrosEmails.length - missingEmails.length,
     recovered,
+    recovered_from_hyros: recoveredFromHyros,
     orphans,
   });
 }
