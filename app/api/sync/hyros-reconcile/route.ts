@@ -93,12 +93,17 @@ export async function GET(req: Request) {
   const orphans: Array<{ email: string; reason: string }> = [];
 
   // Build a map of ALL Hyros leads keyed by email for orphan fallback.
-  // We use all leads (not just PPM-filtered) because some seed emails may have
-  // shifted attribution in Hyros; the in_hyros_list seed is already manually
-  // curated so we trust it.
   const hyrosLeadByEmail = new Map(
     hyrosLeads.map((l) => [(l.email || '').toLowerCase().trim(), l])
   );
+
+  // Only upsert from Hyros for emails that are confirmed PPM leads (in_hyros_list).
+  // This prevents consumer/homeowner leads that clicked the B2B ad from polluting the DB.
+  const { data: hyrosListRows } = await supa
+    .from('hyros_attribution')
+    .select('email')
+    .eq('in_hyros_list', true);
+  const hyrosListSet = new Set((hyrosListRows || []).map((r) => (r.email || '').toLowerCase()));
 
   for (const email of missingEmails) {
     try {
@@ -115,9 +120,9 @@ export async function GET(req: Request) {
         continue;
       }
 
-      // Not in GHL — if it's a confirmed PPM lead, upsert from Hyros data directly
+      // Not in GHL — only upsert from Hyros if email is a confirmed PPM seed lead
       const hyrosLead = hyrosLeadByEmail.get(email);
-      if (hyrosLead) {
+      if (hyrosLead && hyrosListSet.has(email)) {
         const row = mapHyrosOrphanToLead(hyrosLead);
         const { error } = await supa.from('leads').upsert(row, { onConflict: 'ghl_contact_id' });
         if (error) {
@@ -126,7 +131,7 @@ export async function GET(req: Request) {
           recoveredFromHyros++;
         }
       } else {
-        orphans.push({ email, reason: 'not in GHL, not found in Hyros data' });
+        orphans.push({ email, reason: 'not in GHL, not in confirmed PPM seed list' });
       }
     } catch (e) {
       orphans.push({ email, reason: `error: ${String(e).slice(0, 120)}` });
