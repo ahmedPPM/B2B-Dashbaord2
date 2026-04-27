@@ -3,11 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 
 export const maxDuration = 60;
 
-// One-time cleanup: delete leads with synthetic hyros: contact IDs that are NOT
-// in the confirmed hyros_attribution seed list (in_hyros_list = true).
-// These were accidentally inserted during a reconcile run that lacked the seed filter.
-// GET /api/admin/hyros-cleanup?manual=1   (dry run — shows what would be deleted)
-// GET /api/admin/hyros-cleanup?manual=1&confirm=1  (actually deletes)
+// Cleanup after the reconcile over-insertion incident.
+// 1. Deletes ALL leads with synthetic hyros: contact IDs.
+// 2. Resets in_hyros_list=false for all hyros_attribution rows.
+//    (hyros-list sync will re-seed the correct PPM-account-only set.)
+//
+// GET ?manual=1            — dry run
+// GET ?manual=1&confirm=1  — execute
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -20,37 +22,30 @@ export async function GET(req: Request) {
 
   const supa = supabaseAdmin();
 
-  // All leads with synthetic hyros: contact IDs
   const { data: hyrosLeads, error: fetchErr } = await supa
     .from('leads')
-    .select('id, ghl_contact_id, email, lead_name, date_opted_in')
+    .select('id, email, lead_name')
     .like('ghl_contact_id', 'hyros:%');
 
   if (fetchErr) return NextResponse.json({ ok: false, error: fetchErr.message }, { status: 500 });
-  const all = hyrosLeads || [];
+  const toDelete = hyrosLeads || [];
 
-  // Confirmed PPM seed leads (in_hyros_list = true)
-  const emails = all.map((l) => (l.email || '').toLowerCase()).filter(Boolean);
-  const { data: seedRows } = emails.length
-    ? await supa.from('hyros_attribution').select('email').eq('in_hyros_list', true).in('email', emails)
-    : { data: [] };
-  const seedSet = new Set((seedRows || []).map((r) => (r.email || '').toLowerCase()));
-
-  const toKeep = all.filter((l) => seedSet.has((l.email || '').toLowerCase()));
-  const toDelete = all.filter((l) => !seedSet.has((l.email || '').toLowerCase()));
+  const { count: flaggedCount } = await supa
+    .from('hyros_attribution')
+    .select('email', { count: 'exact', head: true })
+    .eq('in_hyros_list', true);
 
   if (!confirm) {
     return NextResponse.json({
       ok: true,
       dry_run: true,
-      total_hyros_leads: all.length,
-      would_keep: toKeep.length,
-      would_delete: toDelete.length,
-      sample_delete: toDelete.slice(0, 20).map((l) => ({ email: l.email, name: l.lead_name })),
+      leads_to_delete: toDelete.length,
+      hyros_list_flags_to_reset: flaggedCount,
+      sample: toDelete.slice(0, 10).map((l) => ({ email: l.email, name: l.lead_name })),
     });
   }
 
-  // Delete the non-seed ones
+  // 1. Delete all hyros: leads
   const ids = toDelete.map((l) => l.id);
   let deleted = 0;
   const errors: string[] = [];
@@ -59,15 +54,22 @@ export async function GET(req: Request) {
       .from('leads')
       .delete({ count: 'exact' })
       .in('id', ids);
-    if (delErr) errors.push(delErr.message);
+    if (delErr) errors.push(`delete leads: ${delErr.message}`);
     else deleted = count || ids.length;
   }
 
+  // 2. Reset in_hyros_list for all rows (hyros-list sync will re-seed correctly)
+  const { error: resetErr } = await supa
+    .from('hyros_attribution')
+    .update({ in_hyros_list: false })
+    .eq('in_hyros_list', true);
+  if (resetErr) errors.push(`reset flags: ${resetErr.message}`);
+
   return NextResponse.json({
-    ok: true,
+    ok: errors.length === 0,
     deleted,
-    kept: toKeep.length,
-    kept_emails: toKeep.map((l) => l.email),
+    flags_reset: flaggedCount,
     errors,
+    next_step: 'Run GET /api/sync/hyros-list?manual=1 to re-seed the correct PPM leads, then /api/sync/hyros-reconcile to recover any orphans.',
   });
 }
