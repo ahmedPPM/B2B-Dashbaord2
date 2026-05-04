@@ -51,6 +51,21 @@ export interface HyrosAttribution {
   is_paid_ad: boolean;
 }
 
+function chunkDateRange(fromDate: string, toDate: string, days: number): Array<[string, string]> {
+  const start = new Date(fromDate + 'T00:00:00Z').getTime();
+  const end = new Date(toDate + 'T00:00:00Z').getTime();
+  if (!isFinite(start) || !isFinite(end) || end < start) return [[fromDate, toDate]];
+  const windows: Array<[string, string]> = [];
+  const step = days * 24 * 60 * 60 * 1000;
+  for (let t = start; t <= end; t += step) {
+    const a = new Date(t).toISOString().slice(0, 10);
+    const bMs = Math.min(t + step - 24 * 60 * 60 * 1000, end);
+    const b = new Date(bMs).toISOString().slice(0, 10);
+    windows.push([a, b]);
+  }
+  return windows;
+}
+
 export class HyrosClient {
   private apiKey: string;
 
@@ -97,34 +112,37 @@ export class HyrosClient {
   }
 
   /**
-   * List every Hyros lead created in a date range. Paginates through
-   * Hyros's cursor-based pagination internally and returns the flat list.
+   * List every Hyros lead created in a date range. Hyros silently caps a
+   * single call at ~250 results and omits pagination.pageId, so we chunk
+   * the requested range into ≤7-day windows and dedupe by id|email.
    * Dates are ISO YYYY-MM-DD.
    */
   async listLeads(params: { fromDate: string; toDate?: string; maxPages?: number; pageSize?: number }): Promise<HyrosLead[]> {
     const leads: HyrosLead[] = [];
     const seenIds = new Set<string>();
-    let pageId: string | undefined;
-    const maxPages = params.maxPages ?? 20;
-    // Hyros silently caps the default page size and OMITS pagination.pageId
-    // when a cap kicks in — always request an explicit size so we actually
-    // see pagination cursors when more pages exist.
+    const maxPagesPerWindow = params.maxPages ?? 20;
     const pageSize = params.pageSize ?? 250;
-    for (let i = 0; i < maxPages; i++) {
-      const q = new URLSearchParams({ fromDate: params.fromDate, pageSize: String(pageSize) });
-      if (params.toDate) q.set('toDate', params.toDate);
-      if (pageId) q.set('pageId', pageId);
-      const data = await this.request<{ result?: HyrosLead[]; pagination?: { pageId?: string | null } }>(
-        `/leads?${q.toString()}`,
-      );
-      for (const l of data.result || []) {
-        const key = (l.id || l.email || '').toString();
-        if (!key || seenIds.has(key)) continue;
-        seenIds.add(key);
-        leads.push(l);
+
+    const toDate = params.toDate || new Date().toISOString().slice(0, 10);
+    const windows = chunkDateRange(params.fromDate, toDate, 7);
+
+    for (const [winFrom, winTo] of windows) {
+      let pageId: string | undefined;
+      for (let i = 0; i < maxPagesPerWindow; i++) {
+        const q = new URLSearchParams({ fromDate: winFrom, toDate: winTo, pageSize: String(pageSize) });
+        if (pageId) q.set('pageId', pageId);
+        const data = await this.request<{ result?: HyrosLead[]; pagination?: { pageId?: string | null } }>(
+          `/leads?${q.toString()}`,
+        );
+        for (const l of data.result || []) {
+          const key = (l.id || l.email || '').toString();
+          if (!key || seenIds.has(key)) continue;
+          seenIds.add(key);
+          leads.push(l);
+        }
+        pageId = data.pagination?.pageId || undefined;
+        if (!pageId) break;
       }
-      pageId = data.pagination?.pageId || undefined;
-      if (!pageId) break;
     }
     return leads;
   }
