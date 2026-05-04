@@ -157,7 +157,12 @@ export default function DashboardPage() {
         if (!match) return false;
       }
       if (filters.campaign) {
-        if ((l.campaign_name || '').toLowerCase() !== filters.campaign.toLowerCase()) return false;
+        const f = filters.campaign.toLowerCase();
+        const matches =
+          (l.campaign_name || '').toLowerCase() === f ||
+          (l.hyros_ad_name || '').toLowerCase() === f ||
+          (l.ad_name || '').toLowerCase() === f;
+        if (!matches) return false;
       }
       return true;
     });
@@ -201,11 +206,18 @@ export default function DashboardPage() {
     return Array.from(new Set(all)).sort();
   }, [leads]);
   const campaigns = useMemo(() => {
+    // Build the dropdown from GHL campaigns AND Hyros ad names. ~78% of paid
+    // leads have no GHL campaign_name, so without Hyros they were unfilterable.
     const seen = new Map<string, string>();
+    const add = (v: string | null | undefined) => {
+      if (!v) return;
+      const key = v.toLowerCase();
+      if (!seen.has(key)) seen.set(key, v);
+    };
     for (const l of leads) {
-      if (!l.campaign_name) continue;
-      const key = l.campaign_name.toLowerCase();
-      if (!seen.has(key)) seen.set(key, l.campaign_name);
+      add(l.campaign_name);
+      add(l.hyros_ad_name);
+      add(l.ad_name);
     }
     return Array.from(seen.values()).sort();
   }, [leads]);

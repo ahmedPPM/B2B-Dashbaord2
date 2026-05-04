@@ -43,6 +43,14 @@ export interface Lead {
   backfilled: boolean;
   created_at: string;
   updated_at: string;
+  // Attached server-side by /api/leads from hyros_attribution. Optional so
+  // direct DB selects (which don't carry the join) still type-check.
+  hyros_paid?: boolean;
+  hyros_ad_name?: string | null;
+  hyros_traffic_source?: string | null;
+  hyros_ad_platform?: string | null;
+  hyros_revenue?: number;
+  is_paid_ad?: boolean;
 }
 
 export interface PipelineEvent {

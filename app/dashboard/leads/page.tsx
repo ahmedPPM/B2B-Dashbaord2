@@ -54,7 +54,9 @@ export default function LeadsPage() {
         (l.email || '').toLowerCase().includes(q) ||
         (l.phone || '').toLowerCase().includes(q) ||
         (l.assigned_user_name || '').toLowerCase().includes(q) ||
-        (l.campaign_name || '').toLowerCase().includes(q)
+        (l.campaign_name || '').toLowerCase().includes(q) ||
+        (l.hyros_ad_name || '').toLowerCase().includes(q) ||
+        (l.ad_name || '').toLowerCase().includes(q)
       );
     });
   }, [leads, query, mode, rangeIdx]);

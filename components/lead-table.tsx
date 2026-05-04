@@ -69,7 +69,7 @@ export function LeadTable({ leads }: { leads: Lead[] }) {
               <div><span className="text-zinc-600">Demo:</span> {l.demo_show_status || '—'}</div>
               <div><span className="text-zinc-600">Cash:</span> <span className="text-zinc-200">{formatCurrency(l.cash_collected)}</span></div>
               <div><span className="text-zinc-600">MRR:</span> <span className="text-zinc-200">{formatCurrency(l.contracted_mrr)}</span></div>
-              <div className="col-span-2 truncate"><span className="text-zinc-600">Source:</span> {l.campaign_name || l.lead_source || '—'}</div>
+              <div className="col-span-2 truncate"><span className="text-zinc-600">Ad:</span> {l.hyros_ad_name || l.ad_name || l.campaign_name || l.lead_source || '—'}</div>
             </div>
             {l.client_closed && <div className="mt-2 text-xs text-emerald-400">✓ Closed</div>}
           </Link>
@@ -92,7 +92,7 @@ export function LeadTable({ leads }: { leads: Lead[] }) {
               <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-zinc-500">Closed</th>
               {th('cash_collected', 'Cash')}
               {th('contracted_mrr', 'MRR')}
-              <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-zinc-500">Ad Source</th>
+              <th className="px-3 py-2 text-left text-xs uppercase tracking-wider text-zinc-500">Ad / Campaign</th>
             </tr>
           </thead>
           <tbody>
@@ -116,8 +116,20 @@ export function LeadTable({ leads }: { leads: Lead[] }) {
                 </td>
                 <td className="px-3 py-2 text-zinc-200">{formatCurrency(l.cash_collected)}</td>
                 <td className="px-3 py-2 text-zinc-200">{formatCurrency(l.contracted_mrr)}</td>
-                <td className="px-3 py-2 text-zinc-400 truncate max-w-[200px]">
-                  {l.campaign_name || l.lead_source || <span className="text-zinc-600">—</span>}
+                <td className="px-3 py-2 text-zinc-400 truncate max-w-[240px]">
+                  {(() => {
+                    const ad = l.hyros_ad_name || l.ad_name;
+                    const camp = l.campaign_name;
+                    if (ad) {
+                      return (
+                        <span title={camp || l.hyros_traffic_source || ''}>
+                          <span className="text-zinc-200">{ad}</span>
+                          {camp && <span className="text-zinc-600 ml-1.5 text-xs">· {camp}</span>}
+                        </span>
+                      );
+                    }
+                    return camp || l.lead_source || <span className="text-zinc-600">—</span>;
+                  })()}
                 </td>
               </tr>
             ))}
