@@ -49,7 +49,12 @@ export interface GHLContact {
     adSetName?: string;
     medium?: string;
     utmSource?: string;
+    utmMedium?: string;
+    utmContent?: string;
+    utmTerm?: string;
   };
+  // Last-touch attribution. Falls back to this when attributionSource is empty.
+  lastAttributionSource?: Record<string, unknown>;
   [k: string]: unknown;
 }
 

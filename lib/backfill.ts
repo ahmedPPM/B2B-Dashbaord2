@@ -67,9 +67,78 @@ function normalizeTags(raw: unknown): string[] | null {
   return null;
 }
 
+interface AttributionExtract {
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  ad_set_name: string | null;
+  ad_name: string | null;
+  ad_id: string | null;
+  ad_set_id: string | null;
+}
+
+/**
+ * Pull attribution + UTM fields from GHL contact. PPM's GHL setup populates
+ * these in two places:
+ *   - attributionSource     — first-touch (preferred)
+ *   - lastAttributionSource — last-touch (fallback when first is empty)
+ *
+ * Field mapping:
+ *   campaign       → campaign_name
+ *   campaignId     → campaign_id
+ *   utmMedium      → ad_set_name (PPM uses utmMedium for the ad set name)
+ *   utmContent     → ad_name     (PPM uses utmContent for the ad creative name)
+ *   adSetName/adName/adSetId/adId → fall through if GHL ever populates them
+ *
+ * If both attribution objects are empty for a contact whose source looks paid
+ * (utmSource set OR campaignId set), a structured warning is logged so we
+ * notice if GHL changes its payload shape.
+ */
+export function extractAttribution(c: GHLContact): AttributionExtract {
+  const a = (c.attributionSource as Record<string, unknown> | undefined) || {};
+  const la = ((c as { lastAttributionSource?: Record<string, unknown> }).lastAttributionSource) || {};
+  const aHas = Object.keys(a).length > 0;
+  const laHas = Object.keys(la).length > 0;
+  const src = aHas ? a : (laHas ? la : a);
+  const str = (k: string): string | null => {
+    const v = src[k];
+    return typeof v === 'string' && v.trim() ? v : null;
+  };
+
+  const looksPaid =
+    !!str('utmSource') ||
+    !!str('campaignId') ||
+    /facebook|meta|instagram|tiktok|google.?ad/i.test(c.source || '');
+  if (looksPaid && !aHas && !laHas) {
+    console.warn('[attribution] contact looks paid but both attributionSource and lastAttributionSource are empty', {
+      contactId: c.id,
+      email: c.email,
+      source: c.source,
+    });
+  }
+
+  return {
+    utm_source:   str('utmSource'),
+    utm_medium:   str('utmMedium'),
+    utm_campaign: str('campaign') || str('utmCampaign'),
+    utm_content:  str('utmContent'),
+    utm_term:     str('utmTerm'),
+    campaign_id:   str('campaignId'),
+    campaign_name: str('campaign'),
+    ad_set_name:   str('adSetName') || str('utmMedium'),
+    ad_name:       str('adName')    || str('utmContent'),
+    ad_id:         str('adId'),
+    ad_set_id:     str('adSetId'),
+  };
+}
+
 export function mapContactToLead(c: GHLContact): Record<string, unknown> {
   const name = c.name || [c.firstName, c.lastName].filter(Boolean).join(' ') || null;
-  const attr = c.attributionSource || {};
+  const attr = extractAttribution(c);
   const tags = normalizeTags(c.tags);
   return {
     ghl_contact_id: c.id,
@@ -78,13 +147,18 @@ export function mapContactToLead(c: GHLContact): Record<string, unknown> {
     phone: c.phone || null,
     email: c.email ? c.email.toLowerCase() : null,
     app_grading: calculateLeadScore(c),
-    campaign_id: attr.campaignId || null,
-    ad_set_id: attr.adSetId || null,
-    ad_id: attr.adId || null,
-    campaign_name: attr.campaign || null,
-    ad_set_name: attr.adSetName || null,
-    ad_name: attr.adName || null,
-    lead_source: c.source || attr.utmSource || 'Organic',
+    campaign_id: attr.campaign_id,
+    ad_set_id: attr.ad_set_id,
+    ad_id: attr.ad_id,
+    campaign_name: attr.campaign_name,
+    ad_set_name: attr.ad_set_name,
+    ad_name: attr.ad_name,
+    utm_source: attr.utm_source,
+    utm_medium: attr.utm_medium,
+    utm_campaign: attr.utm_campaign,
+    utm_content: attr.utm_content,
+    utm_term: attr.utm_term,
+    lead_source: c.source || attr.utm_source || 'Organic',
     lead_tag: tags?.[0] || null,
     tags,
     assigned_user_id: c.assignedTo || null,
@@ -410,7 +484,7 @@ export async function ensureLeadForEmail(email: string): Promise<string | null> 
 }
 
 export async function enrichLeadFromGhl(contactId: string, leadId: string): Promise<void> {
-  // Custom fields + tags
+  // Custom fields + tags + attribution
   try {
     const { contact } = await ghl.getContact(contactId);
     if (contact) {
@@ -425,6 +499,25 @@ export async function enrichLeadFromGhl(contactId: string, leadId: string): Prom
       }
       // Always refresh tags so intro/demo outcome classification stays accurate.
       if (Array.isArray(contact.tags)) patch.tags = contact.tags.length ? contact.tags : null;
+      // Refresh attribution + UTMs. Only OVERWRITE when extractor returns a
+      // value — never blow away an existing attribution with null in case
+      // GHL temporarily returns an empty payload.
+      const attr = extractAttribution(contact);
+      const setIfPresent = (k: keyof typeof attr) => {
+        const v = attr[k];
+        if (v !== null && v !== undefined && v !== '') patch[k] = v;
+      };
+      setIfPresent('utm_source');
+      setIfPresent('utm_medium');
+      setIfPresent('utm_campaign');
+      setIfPresent('utm_content');
+      setIfPresent('utm_term');
+      setIfPresent('campaign_id');
+      setIfPresent('campaign_name');
+      setIfPresent('ad_set_name');
+      setIfPresent('ad_name');
+      setIfPresent('ad_id');
+      setIfPresent('ad_set_id');
       if (Object.keys(patch).length) {
         await supabaseAdmin().from('leads').update(patch).eq('id', leadId);
       }

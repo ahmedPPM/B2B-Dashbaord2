@@ -40,6 +40,11 @@ export interface Lead {
   contracted_mrr: number;
   lead_tag: string | null;
   tags: string[] | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
   backfilled: boolean;
   created_at: string;
   updated_at: string;

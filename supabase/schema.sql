@@ -52,12 +52,23 @@ create table if not exists public.leads (
 -- (e.g. intro-no-show / demo-cancelled) instead of the flaky status string.
 alter table public.leads add column if not exists tags text[];
 
+-- UTM parameters from GHL attributionSource (first touch, preferred) or
+-- lastAttributionSource (fallback). Persisted so reporting can pivot on
+-- campaign/medium/content without requerying GHL.
+alter table public.leads add column if not exists utm_source text;
+alter table public.leads add column if not exists utm_medium text;
+alter table public.leads add column if not exists utm_campaign text;
+alter table public.leads add column if not exists utm_content text;
+alter table public.leads add column if not exists utm_term text;
+
 create index if not exists idx_leads_ghl on public.leads(ghl_contact_id);
 create index if not exists idx_leads_email on public.leads(email);
 create index if not exists idx_leads_tag on public.leads(lead_tag);
 create index if not exists idx_leads_tags on public.leads using gin(tags);
 create index if not exists idx_leads_stage on public.leads(pipeline_stage);
 create index if not exists idx_leads_opt on public.leads(date_opted_in);
+create index if not exists idx_leads_utm_source on public.leads(utm_source);
+create index if not exists idx_leads_utm_campaign on public.leads(utm_campaign);
 
 -- =======================================================
 -- pipeline_events
