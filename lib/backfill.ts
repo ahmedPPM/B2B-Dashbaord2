@@ -499,6 +499,16 @@ export async function enrichLeadFromGhl(contactId: string, leadId: string): Prom
       }
       // Always refresh tags so intro/demo outcome classification stays accurate.
       if (Array.isArray(contact.tags)) patch.tags = contact.tags.length ? contact.tags : null;
+      // Refresh identity fields. Only OVERWRITE when GHL has a non-empty value.
+      // Webhooks sometimes deliver lead-creation events before GHL has filled
+      // the contact's name/phone, leaving the row blank forever otherwise.
+      const composedName =
+        (contact.name && contact.name.trim()) ||
+        [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() ||
+        '';
+      if (composedName) patch.lead_name = composedName;
+      if (contact.phone && contact.phone.trim()) patch.phone = contact.phone.trim();
+      if (contact.source && contact.source.trim()) patch.lead_source = contact.source.trim();
       // Refresh attribution + UTMs. Only OVERWRITE when extractor returns a
       // value — never blow away an existing attribution with null in case
       // GHL temporarily returns an empty payload.
